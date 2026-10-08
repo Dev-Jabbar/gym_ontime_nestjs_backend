@@ -1,0 +1,12 @@
+cat > .gitignore << 'EOF'
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+*.zip
+*.bak
+*.tsbuildinfo
+coverage/
+.DS_Store
+EOF

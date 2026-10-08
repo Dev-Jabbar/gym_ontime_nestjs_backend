@@ -1,0 +1,322 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ── Enums ──────────────────────────────────────────────────────────
+// Mongoose used string enums inline on each field. Prisma/Postgres
+// wants these declared up front as real Postgres enum types.
+
+enum Role {
+  member
+  trainer
+  admin
+}
+
+enum Gender {
+  male
+  female
+  prefer_not_to_say
+}
+
+enum FitnessGoal {
+  weight_loss
+  muscle_gain
+  endurance
+  flexibility
+  general_fitness
+}
+
+enum Recurrence {
+  none
+  daily
+  weekly
+  monthly
+}
+
+enum DayOfWeek {
+  monday
+  tuesday
+  wednesday
+  thursday
+  friday
+  saturday
+  sunday
+}
+
+enum PaymentProvider {
+  stripe
+  paystack
+}
+
+enum PaymentStatus {
+  pending
+  completed
+  failed
+}
+
+enum PaymentType {
+  one_time
+  subscription
+}
+
+enum SubscriptionInterval {
+  weekly
+  monthly
+  threeMonths
+}
+
+enum SubscriptionStatus {
+  active
+  expired
+  cancelled
+}
+
+enum NotificationType {
+  payment_confirmed
+  payment_needs_review
+  class_reminder
+  trainer_assigned
+}
+
+model Notification {
+  id     String           @id @default(uuid())
+  userId String
+  user   User             @relation(fields: [userId], references: [id])
+  type   NotificationType
+  title  String
+  message String
+  read   Boolean          @default(false)
+
+  relatedClassId   String?
+  relatedClass     Class?   @relation(fields: [relatedClassId], references: [id])
+  relatedPaymentId String?
+  relatedPayment   Payment? @relation(fields: [relatedPaymentId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Covers findByUserId({ user }).sort({ createdAt: -1 }) without an
+  // in-memory sort, same reasoning as the Mongoose index it replaces.
+  @@index([userId, createdAt])
+  // Covers countUnread + markAllAsRead as one compound lookup.
+  @@index([userId, read])
+}
+
+model AdminProfile {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id])
+  avatar    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ── User ───────────────────────────────────────────────────────────
+// Direct equivalent of user.model.ts. Note there's no pre("save") hook
+// here — hashing happens explicitly in the service layer (see Step 1's
+// UsersService, which this replaces).
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      Role     @default(member)
+  isActive  Boolean  @default(true)
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberProfile  MemberProfile?
+  trainerProfile TrainerProfile?
+  adminProfile   AdminProfile?
+  payments       Payment[]
+  subscriptions  ClassSubscription[]
+  notifications  Notification[]
+
+  @@index([isActive])
+}
+
+// ── MemberProfile ─────────────────────────────────────────────────
+model MemberProfile {
+  id            String       @id @default(uuid())
+  userId        String       @unique
+  user          User         @relation(fields: [userId], references: [id])
+  avatar        String?
+  phone         String?
+  dateOfBirth   DateTime?
+  gender        Gender?
+  fitnessGoal   FitnessGoal?
+  healthNotes   String?
+  emergencyContactName  String?
+  emergencyContactPhone String?
+  isActive      Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  classMemberships ClassMember[]
+  pendingSeats     PendingSeat[]
+  subscriptions    ClassSubscription[]
+
+  @@index([isActive])
+}
+
+// ── TrainerProfile ────────────────────────────────────────────────
+model TrainerProfile {
+  id             String    @id @default(uuid())
+  userId         String    @unique
+  user           User      @relation(fields: [userId], references: [id])
+  avatar         String?
+  bio            String?
+  specialty      String?
+  phone          String?
+  experience     Int?
+  certifications String[]
+  availability   String?
+  dateOfBirth    DateTime?
+  gender         Gender?
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  classes Class[]
+
+  @@index([isActive])
+}
+
+// ── Class ──────────────────────────────────────────────────────────
+// Biggest structural change from Mongo: `members` and `pendingMembers`
+// were arrays embedded directly on the Class document. Postgres has no
+// embedded-array-of-references concept, so each becomes its own table
+// (ClassMember, PendingSeat) with a foreign key back to Class — this is
+// the real "document -> relational" redesign, not a cosmetic change.
+model Class {
+  id                 String     @id @default(uuid())
+  name               String
+  description        String?
+  schedule           DateTime
+  duration           Int        @default(60)
+  recurrence         Recurrence @default(none)
+  recurrenceDays     DayOfWeek[]
+  trainerId          String?
+  trainer            TrainerProfile? @relation(fields: [trainerId], references: [id])
+
+  pricingOneTime     Decimal?   @db.Decimal(10, 2)
+  pricingWeekly      Decimal?   @db.Decimal(10, 2)
+  pricingMonthly     Decimal?   @db.Decimal(10, 2)
+  pricingThreeMonths Decimal?   @db.Decimal(10, 2)
+
+  capacity           Int?
+  image              String?
+  lastReminderSentAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members       ClassMember[]
+  pendingSeats  PendingSeat[]
+  payments      Payment[]
+  subscriptions ClassSubscription[]
+  notifications Notification[]
+
+  @@index([trainerId])
+}
+
+// Replaces Class.members: ObjectId[] — a confirmed, paid seat.
+// The @@unique is the direct equivalent of the compound unique index
+// your Mongoose schema uses to stop double-enrollment.
+model ClassMember {
+  id              String        @id @default(uuid())
+  classId         String
+  class           Class         @relation(fields: [classId], references: [id])
+  memberProfileId String
+  memberProfile   MemberProfile @relation(fields: [memberProfileId], references: [id])
+  joinedAt        DateTime      @default(now())
+
+  @@unique([classId, memberProfileId])
+  @@index([memberProfileId])
+}
+
+// Replaces Class.pendingMembers[] — an in-progress 15-min seat hold.
+// Same fields as the Mongoose subdocument (member + expiresAt), just
+// promoted to its own table since Postgres can't embed it.
+model PendingSeat {
+  id              String        @id @default(uuid())
+  classId         String
+  class           Class         @relation(fields: [classId], references: [id])
+  memberProfileId String
+  memberProfile   MemberProfile @relation(fields: [memberProfileId], references: [id])
+  expiresAt       DateTime
+  createdAt       DateTime      @default(now())
+
+  @@index([classId])
+  @@index([expiresAt]) // the cleanup job will query "all expired holds" constantly
+}
+
+// ── Payment ────────────────────────────────────────────────────────
+model Payment {
+  id       String          @id @default(uuid())
+  userId   String
+  user     User            @relation(fields: [userId], references: [id])
+  classId  String?
+  class    Class?          @relation(fields: [classId], references: [id])
+
+  amount   Decimal         @db.Decimal(10, 2)
+  currency String          @default("NGN")
+
+  provider PaymentProvider @default(paystack)
+  method   String          @default("card")
+  status   PaymentStatus   @default(pending)
+
+  needsReview Boolean      @default(false)
+  paymentType PaymentType  @default(one_time)
+  subscriptionInterval SubscriptionInterval?
+
+  stripeSessionId        String? @unique
+  stripePaymentIntentId  String?
+  paystackReference      String? @unique
+  paystackAccessCode     String?
+
+  // Back-relation only — the FK itself lives on ClassSubscription,
+  // same direction as Mongoose's subscription.payment being the
+  // required side and payment.subscription being the optional one.
+  subscription ClassSubscription?
+  notifications Notification[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([userId, classId, status])
+  @@index([classId, status])
+  @@index([status, createdAt])
+  @@index([needsReview, createdAt])
+}
+
+// ── ClassSubscription ─────────────────────────────────────────────
+model ClassSubscription {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  memberProfileId String
+  memberProfile   MemberProfile @relation(fields: [memberProfileId], references: [id])
+  classId         String
+  class           Class    @relation(fields: [classId], references: [id])
+
+  interval  SubscriptionInterval
+  startDate DateTime
+  endDate   DateTime
+  status    SubscriptionStatus @default(active)
+
+  paymentId String  @unique
+  payment   Payment @relation(fields: [paymentId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, classId, status])
+  @@index([status, endDate])
+}
