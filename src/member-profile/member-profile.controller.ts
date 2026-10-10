@@ -35,8 +35,13 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 export class MemberProfileController {
   constructor(private readonly memberProfileService: MemberProfileService) {}
 
-  // GET /api/members — public.
+  // GET /api/members — admin only. The member profile holds private data
+  // (phone, date of birth, health notes, emergency contact), so it is no
+  // longer public. The frontend only calls this from the admin Members
+  // page, which already sends the login cookie.
   @Get()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
   getAllMemberProfiles() {
     return this.memberProfileService.getAllMemberProfiles();
   }
@@ -73,9 +78,15 @@ export class MemberProfileController {
     return this.memberProfileService.deleteMyMemberProfile(user.id);
   }
 
-  // GET /api/members/:id — public. Declared LAST, after GET /me, on purpose.
+  // GET /api/members/:id — logged-in users only: admins and trainers can
+  // view any member; a member can only view their own profile (checked in
+  // the service). Declared LAST, after GET /me, on purpose.
   @Get(':id')
-  getMemberProfileById(@Param('id', ParseUUIDPipe) id: string) {
-    return this.memberProfileService.getMemberProfileById(id);
+  @UseGuards(JwtAuthGuard)
+  getMemberProfileById(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: any,
+  ) {
+    return this.memberProfileService.getMemberProfileById(id, user);
   }
 }

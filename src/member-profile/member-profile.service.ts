@@ -1,4 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { MemberProfileRepository } from './member-profile.repository.js';
 import type {
   CreateMemberProfileDto,
@@ -132,9 +137,17 @@ export class MemberProfileService {
     return profiles.map((p) => this.toApiShape(p));
   }
 
-  async getMemberProfileById(id: string) {
+  // Admins and trainers may view any member. A member may only view their
+  // own profile, so one member can't read another member's private data.
+  async getMemberProfileById(
+    id: string,
+    requester: { id: string; role: string },
+  ) {
     const profile = await this.memberProfileRepo.findActiveById(id);
     if (!profile) throw new NotFoundException('Member profile not found');
+    if (requester.role === 'member' && profile.userId !== requester.id) {
+      throw new ForbiddenException('Access denied');
+    }
     return this.toApiShape(profile);
   }
 }

@@ -1,8 +1,16 @@
 import { Logger } from '@nestjs/common';
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import type { Job } from 'bullmq';
-import { MAINTENANCE_QUEUE, SWEEP_JOB } from './queue.constants.js';
-import { MaintenanceService, type SweepResult } from './maintenance.service.js';
+import {
+  MAINTENANCE_QUEUE,
+  SUBSCRIPTION_EXPIRY_JOB,
+  SWEEP_JOB,
+} from './queue.constants.js';
+import {
+  MaintenanceService,
+  type SubscriptionExpiryResult,
+  type SweepResult,
+} from './maintenance.service.js';
 
 // Thin on purpose: route the job to MaintenanceService. concurrency 1 so
 // two sweeps never run at once on this instance.
@@ -14,8 +22,11 @@ export class MaintenanceProcessor extends WorkerHost {
     super();
   }
 
-  async process(job: Job): Promise<SweepResult | void> {
+  async process(job: Job): Promise<SweepResult | SubscriptionExpiryResult | void> {
     if (job.name === SWEEP_JOB) return this.maintenance.runSweep();
+    if (job.name === SUBSCRIPTION_EXPIRY_JOB) {
+      return this.maintenance.runSubscriptionExpiry();
+    }
     this.logger.warn(`Ignoring unknown job "${job.name}" (id ${job.id})`);
   }
 

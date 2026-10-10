@@ -4,7 +4,11 @@ import { Queue } from 'bullmq';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
-import { MAINTENANCE_QUEUE, SWEEP_JOB } from './queue.constants.js';
+import {
+  MAINTENANCE_QUEUE,
+  SUBSCRIPTION_EXPIRY_JOB,
+  SWEEP_JOB,
+} from './queue.constants.js';
 import { SWEEP_JOB_OPTIONS } from './maintenance.scheduler.js';
 
 // Admin-only manual trigger, handy for testing the abandon -> failed ->
@@ -21,6 +25,22 @@ export class MaintenanceController {
     return {
       success: true,
       message: 'Sweep queued. Watch the server log for the result.',
+      data: { jobId: job.id },
+    };
+  }
+
+  // Same idea for the subscription-expiry job, so it can be tested
+  // without waiting an hour.
+  @Post('expire-subscriptions')
+  async expireSubscriptionsNow() {
+    const job = await this.queue.add(
+      SUBSCRIPTION_EXPIRY_JOB,
+      {},
+      SWEEP_JOB_OPTIONS,
+    );
+    return {
+      success: true,
+      message: 'Subscription expiry queued. Watch the server log for the result.',
       data: { jobId: job.id },
     };
   }

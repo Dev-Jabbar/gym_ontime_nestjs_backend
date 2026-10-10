@@ -316,6 +316,23 @@ export class ClassesService {
     return { message: 'Member removed from class successfully' };
   }
 
+  // Used by the subscription-expiry job (no request context). Unlike
+  // removeMemberFromClass it never throws: returns true if the member was
+  // enrolled and has been removed, false if they were not enrolled. Safe
+  // to call repeatedly.
+  async removeMemberByProfileId(
+    classId: string,
+    memberProfileId: string,
+  ): Promise<boolean> {
+    const existing = await this.classesRepo.findMembership(
+      classId,
+      memberProfileId,
+    );
+    if (!existing) return false;
+    await this.classesRepo.removeMember(existing.id);
+    return true;
+  }
+
   // ------------------------
   // ASSIGN / CHANGE TRAINER
   // ------------------------

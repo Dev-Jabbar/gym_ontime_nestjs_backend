@@ -4,7 +4,7 @@ REST API for **Gym Ontime**, a gym class booking platform. Members browse classe
 
 This is a full rebuild of an earlier Express + MongoDB backend onto **NestJS, Prisma and PostgreSQL**, with Redis caching and a BullMQ background job. It keeps the original `/api/...` paths and response shapes, so the existing Next.js frontend works against it unchanged.
 
-> **Project status:** feature-complete for the core booking and payment flow and live-tested against a real Postgres (Neon) database. Subscription expiry, real-time seat updates, push notifications, observability and containerisation are in progress. See [Roadmap](#roadmap) and [Known limitations](#known-limitations).
+> **Project status:** feature-complete for the core booking and payment flow and live-tested against a real Postgres (Neon) database. Real-time seat updates, push notifications, observability and containerisation are in progress. See [Roadmap](#roadmap) and [Known limitations](#known-limitations).
 
 ## Table of contents
 
@@ -34,6 +34,7 @@ This is a full rebuild of an earlier Express + MongoDB backend onto **NestJS, Pr
 - **Race-free seat booking** with 15-minute holds
 - Paystack payments: one-time and subscription (weekly, monthly, three months)
 - Payment reconciliation from three paths: the user's redirect, the Paystack webhook and a background sweep
+- Subscriptions expire automatically: an hourly job marks them expired and frees the member's seat
 - In-app notifications (payment confirmed, payment needs review, and more)
 - Signed Cloudinary uploads (the file never passes through this server)
 - Redis caching that **fails open** when Redis is unavailable
@@ -57,7 +58,7 @@ flowchart LR
   PS -->|webhook| C
 
   subgraph Q[BullMQ worker, same process]
-    J[Maintenance sweep<br/>every 15 min] --> S
+    J[Maintenance jobs<br/>payment sweep, subscription expiry] --> S
   end
   Q <--> RQ[(Redis queue, DB 1)]
 ```
@@ -180,6 +181,7 @@ Copy [`.env.example`](.env.example) to `.env`.
 | `QUEUE_REDIS_DB` | No | `1` | Redis DB used by the queue |
 | `MAINTENANCE_INTERVAL_MINUTES` | No | `15` | How often the sweep runs |
 | `PAYMENT_STALE_MINUTES` | No | `30` | Age at which a pending payment is re-verified |
+| `SUBSCRIPTION_EXPIRY_INTERVAL_MINUTES` | No | `60` | How often the subscription-expiry job runs |
 | `PORT` | No | `3001` | HTTP port |
 | `NODE_ENV` | No | | `production` makes the admin seed require `ADMIN_PASSWORD` |
 | `ADMIN_EMAIL`, `ADMIN_NAME`, `ADMIN_AVATAR`, `ADMIN_PASSWORD` | No | see seed | Admin seed settings; `ADMIN_PASSWORD` is **required** when `NODE_ENV=production` |
@@ -207,7 +209,8 @@ Base URL: `/api`. Authentication uses the session cookie set at login. Payments 
 | | `POST` / `DELETE /classes/:id/members/:userId` | admin |
 | | `PUT /classes/:id/trainer/:userId` | admin |
 | **Members** | `POST /members/profile`, `GET` / `PUT` / `DELETE /members/me` | member |
-| | `GET /members`, `GET /members/:id` | Public |
+| | `GET /members` | admin |
+| | `GET /members/:id` | admin, trainer, or the member themselves |
 | **Trainers** | `POST /trainers/profile`, `GET` / `PUT` / `DELETE /trainers/me` | trainer |
 | | `GET /trainers/my-classes` | trainer |
 | | `GET /trainers`, `GET /trainers/:id` | Public |
@@ -217,7 +220,7 @@ Base URL: `/api`. Authentication uses the session cookie set at login. Payments 
 | | `POST /payments/webhook` | Public (verified by HMAC signature) |
 | **Notifications** | `GET /notifications/my-notifications`, `PUT /notifications/:id/read`, `PUT /notifications/mark-all-read` | Auth |
 | **Uploads** | `POST /uploads/signature` | Auth |
-| **Maintenance** | `POST /maintenance/run` (queue a sweep now) | admin |
+| **Maintenance** | `POST /maintenance/run` (queue a payment sweep now), `POST /maintenance/expire-subscriptions` (run subscription expiry now) | admin |
 
 A Postman collection is used for manual testing. OpenAPI/Swagger documentation is on the [roadmap](#roadmap).
 
@@ -256,13 +259,19 @@ sequenceDiagram
 
 ## Background jobs
 
-A BullMQ repeatable job named `sweep` runs every 15 minutes (configurable):
+Two BullMQ repeatable jobs run on the `maintenance` queue.
+
+### Payment sweep (every 15 minutes, configurable)
 
 1. Re-verifies pending payments older than `PAYMENT_STALE_MINUTES`.
 2. Force-expires payments still unresolved after 24 hours.
 3. Deletes expired seat holds.
 
 It is idempotent, isolates each payment in its own try/catch, retries up to 3 times with exponential backoff, and logs a summary such as `{ checked, resolved, unresolved, hardExpired, holdsReleased }`. Admins can trigger a run with `POST /api/maintenance/run`.
+
+### Subscription expiry (hourly, configurable)
+
+Finds subscriptions still `active` whose `endDate` has passed, removes the member from the class so the seat is freed, and marks the subscription `expired` so the member can subscribe again. The member is removed first and the status flipped last, so a failed step is retried on the next run instead of leaving a lapsed member enrolled. It is idempotent and isolates each subscription. It logs `{ checked, expired, membersRemoved, failed }`, and admins can trigger it with `POST /api/maintenance/expire-subscriptions`.
 
 If `REDIS_URL` is not set, the queue module is not loaded.
 
@@ -318,24 +327,22 @@ To report a vulnerability, please open a private security advisory on GitHub ins
 
 These are documented rather than hidden:
 
-- Subscriptions are not yet expired automatically (the expiry job is next on the roadmap).
 - The webhook signature is computed over the re-serialized JSON body instead of the raw request bytes; it should use the raw body.
 - Booking a class whose date has already passed is not rejected.
-- Several list endpoints (`GET /members`, `GET /members/:id`, `GET /trainers`) are public to match the original API; they should be restricted or trimmed before production use.
+- `GET /trainers` and `GET /trainers/:id` are public to match the original API. Trainer profiles include a phone number, so trim or restrict them before production use.
 - The session cookie is `sameSite: lax` and not marked `secure`; it needs to become environment-aware for a cross-domain deployment.
 - No health endpoint, rate limiting or `helmet` yet.
 - A `needsReview` payment currently returns `success: true` from `verify`.
 
 ## Roadmap
 
-1. Subscription expiry job (hourly, in the existing queue)
-2. Automated tests for payments, seat holds and the maintenance job, then CI
-3. Production hardening: raw-body webhook signature check, health endpoint, `helmet`, rate limiting, env validation at boot, tightened public endpoints
-4. OpenAPI / Swagger documentation
-5. WebSocket gateway for live class capacity
-6. Firebase push notifications and class reminders
-7. OpenTelemetry tracing
-8. Docker Compose and Kubernetes manifests
+1. Automated tests for payments, seat holds and the maintenance job, then CI
+2. Production hardening: raw-body webhook signature check, health endpoint, `helmet`, rate limiting, env validation at boot, tightened trainer endpoints
+3. OpenAPI / Swagger documentation
+4. WebSocket gateway for live class capacity
+5. Firebase push notifications and class reminders
+6. OpenTelemetry tracing
+7. Docker Compose and Kubernetes manifests
 
 ## License
 

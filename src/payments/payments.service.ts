@@ -546,6 +546,17 @@ export class PaymentsService {
     return this.paymentsRepo.markPendingFailed(reference);
   }
 
+  // Subscriptions still "active" whose endDate has passed (ids only).
+  findExpiredSubscriptions() {
+    return this.paymentsRepo.findExpiredActiveSubscriptions(new Date());
+  }
+
+  // Marks one subscription expired. No-op if it is no longer active.
+  // Returns whether a row changed.
+  expireSubscription(subscriptionId: string) {
+    return this.paymentsRepo.markSubscriptionExpired(subscriptionId);
+  }
+
   // ────────────────────────────────────────────────────────────────
   // READ ENDPOINTS — direct ports of payment.repository.ts's find*
   // functions, using Prisma `include` in place of Mongoose `.populate`.

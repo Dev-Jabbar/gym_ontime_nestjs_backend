@@ -11,6 +11,13 @@ export interface SweepResult {
   holdsReleased: number;
 }
 
+export interface SubscriptionExpiryResult {
+  checked: number;
+  expired: number;
+  membersRemoved: number;
+  failed: number;
+}
+
 /**
  * The work done by the repeatable "sweep" job (replaces the Express
  * node-cron payment cleanup). It only calls existing services: no data
@@ -79,6 +86,60 @@ export class MaintenanceService {
       holdsReleased: released.count,
     };
     this.logger.log(`Sweep complete: ${JSON.stringify(result)}`);
+    return result;
+  }
+
+  /**
+   * Port of the Express subscriptionExpiry job: every subscription still
+   * "active" whose endDate has passed is marked "expired" and the member is
+   * removed from the class (otherwise they would stay enrolled, and count
+   * toward capacity, forever).
+   *
+   * Order differs from Express on purpose: the member is removed FIRST and
+   * the status flipped LAST. If a step fails, the subscription is still
+   * "active", so the next hourly run retries it. (Flipping first, as Express
+   * did, would leave a lapsed member enrolled forever when removal failed.)
+   * Both steps are safe to repeat, so a retried or overlapping run can't
+   * double-apply.
+   */
+  async runSubscriptionExpiry(): Promise<SubscriptionExpiryResult> {
+    const due = await this.paymentsService.findExpiredSubscriptions();
+
+    let expired = 0;
+    let membersRemoved = 0;
+    let failed = 0;
+
+    // One bad subscription must not stop the rest, so each gets its own
+    // try/catch.
+    for (const sub of due) {
+      try {
+        const removed = await this.classesService.removeMemberByProfileId(
+          sub.classId,
+          sub.memberProfileId,
+        );
+        if (removed) membersRemoved++;
+
+        if (await this.paymentsService.expireSubscription(sub.id)) {
+          expired++;
+          this.logger.log(
+            `Expired subscription ${sub.id} (class ${sub.classId}, member removed: ${removed})`,
+          );
+        }
+      } catch (err) {
+        failed++;
+        this.logger.warn(
+          `Could not fully process expired subscription ${sub.id}: ${(err as Error).message}`,
+        );
+      }
+    }
+
+    const result: SubscriptionExpiryResult = {
+      checked: due.length,
+      expired,
+      membersRemoved,
+      failed,
+    };
+    this.logger.log(`Subscription expiry complete: ${JSON.stringify(result)}`);
     return result;
   }
 }

@@ -25,6 +25,29 @@ export class PaymentsRepository {
     });
   }
 
+  // Subscriptions still marked "active" whose endDate has passed. Oldest
+  // first, capped so one run can't be unbounded after a long outage.
+  // Uses the @@index([status, endDate]) on ClassSubscription.
+  findExpiredActiveSubscriptions(now: Date, limit = 200) {
+    return this.prisma.classSubscription.findMany({
+      where: { status: 'active', endDate: { lt: now } },
+      select: { id: true, classId: true, memberProfileId: true },
+      orderBy: { endDate: 'asc' },
+      take: limit,
+    });
+  }
+
+  // Only flips a row that is STILL active, so a repeated or overlapping
+  // run can never overwrite a cancelled or already-expired subscription.
+  // Returns true when a row was actually changed.
+  async markSubscriptionExpired(id: string): Promise<boolean> {
+    const result = await this.prisma.classSubscription.updateMany({
+      where: { id, status: 'active' },
+      data: { status: 'expired' },
+    });
+    return result.count > 0;
+  }
+
   // ── Writes ────────────────────────────────────────────────────────
 
   create(data: Prisma.PaymentUncheckedCreateInput) {

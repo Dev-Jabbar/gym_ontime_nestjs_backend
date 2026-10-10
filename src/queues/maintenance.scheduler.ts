@@ -3,10 +3,12 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import {
   MAINTENANCE_QUEUE,
+  SUBSCRIPTION_EXPIRY_JOB,
+  SUBSCRIPTION_EXPIRY_SCHEDULER_ID,
   SWEEP_JOB,
   SWEEP_SCHEDULER_ID,
 } from './queue.constants.js';
-import { sweepIntervalMs } from './queue.config.js';
+import { subscriptionExpiryIntervalMs, sweepIntervalMs } from './queue.config.js';
 
 // Shared retry policy for every sweep job: 3 attempts, exponential
 // backoff starting at 30s (30s, 60s). Per-payment failures are handled
@@ -47,6 +49,25 @@ export class MaintenanceScheduler implements OnApplicationBootstrap {
       )
       .catch((err: Error) =>
         this.logger.error(`Could not schedule sweep: ${err.message}`),
+      );
+
+    // Same idea for the hourly subscription-expiry job (a separate
+    // scheduler id, so the two schedules never overwrite each other).
+    void this.queue
+      .upsertJobScheduler(
+        SUBSCRIPTION_EXPIRY_SCHEDULER_ID,
+        { every: subscriptionExpiryIntervalMs() },
+        { name: SUBSCRIPTION_EXPIRY_JOB, opts: SWEEP_JOB_OPTIONS },
+      )
+      .then(() =>
+        this.logger.log(
+          `Subscription expiry scheduled every ${subscriptionExpiryIntervalMs() / 60000} minute(s)`,
+        ),
+      )
+      .catch((err: Error) =>
+        this.logger.error(
+          `Could not schedule subscription expiry: ${err.message}`,
+        ),
       );
   }
 }
