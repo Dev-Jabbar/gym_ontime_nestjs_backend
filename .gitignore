@@ -9,4 +9,4 @@ dist/
 *.tsbuildinfo
 coverage/
 .DS_Store
-EOF
+EOF*.tsbuildinfo
