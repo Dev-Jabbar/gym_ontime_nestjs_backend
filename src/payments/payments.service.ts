@@ -1,22 +1,22 @@
-import { Injectable } from '@nestjs/common';
-import axios from 'axios';
-import crypto from 'crypto';
-import { PaymentsRepository } from './payments.repository.js';
-import { UsersService } from '../users/users.service.js';
-import { MemberProfileService } from '../member-profile/member-profile.service.js';
-import { ClassesService } from '../classes/classes.service.js';
-import { NotificationsService } from '../notifications/notifications.service.js';
+import { Injectable } from "@nestjs/common";
+import axios from "axios";
+import crypto from "crypto";
+import { PaymentsRepository } from "./payments.repository.js";
+import { UsersService } from "../users/users.service.js";
+import { MemberProfileService } from "../member-profile/member-profile.service.js";
+import { ClassesService } from "../classes/classes.service.js";
+import { NotificationsService } from "../notifications/notifications.service.js";
 
-const PAYSTACK_BASE_URL = 'https://api.paystack.co';
+const PAYSTACK_BASE_URL = "https://api.paystack.co";
 const SEAT_HOLD_MINUTES = 15;
 
-type ApiSubscriptionInterval = 'weekly' | 'monthly' | 'threeMonths';
-type ApiPaymentType = 'one-time' | 'subscription';
+type ApiSubscriptionInterval = "weekly" | "monthly" | "threeMonths";
+type ApiPaymentType = "one-time" | "subscription";
 
 const SUBSCRIPTION_INTERVALS: ApiSubscriptionInterval[] = [
-  'weekly',
-  'monthly',
-  'threeMonths',
+  "weekly",
+  "monthly",
+  "threeMonths",
 ];
 
 // Prisma's PaymentType enum uses an underscore (one_time) — Postgres
@@ -28,9 +28,9 @@ const SUBSCRIPTION_INTERVALS: ApiSubscriptionInterval[] = [
 // features/payments/types/index.ts's PaymentType is "one-time", with a
 // hyphen).
 const toDbPaymentType = (t: ApiPaymentType) =>
-  t === 'one-time' ? 'one_time' : 'subscription';
+  t === "one-time" ? "one_time" : "subscription";
 const toApiPaymentType = (t: string): ApiPaymentType =>
-  t === 'one_time' ? 'one-time' : 'subscription';
+  t === "one_time" ? "one-time" : "subscription";
 
 function calculateEndDate(
   startDate: Date,
@@ -38,13 +38,13 @@ function calculateEndDate(
 ): Date {
   const endDate = new Date(startDate);
   switch (interval) {
-    case 'weekly':
+    case "weekly":
       endDate.setDate(endDate.getDate() + 7);
       break;
-    case 'monthly':
+    case "monthly":
       endDate.setMonth(endDate.getMonth() + 1);
       break;
-    case 'threeMonths':
+    case "threeMonths":
       endDate.setMonth(endDate.getMonth() + 3);
       break;
   }
@@ -104,6 +104,7 @@ export class PaymentsService {
     return {
       ...payment,
       _id: payment.id,
+      amount: Number(payment.amount),
       paymentType: toApiPaymentType(payment.paymentType),
       ...(payment.user && { user: { ...payment.user, _id: payment.user.id } }),
       ...(payment.class && {
@@ -111,7 +112,6 @@ export class PaymentsService {
       }),
     };
   }
-
   // ────────────────────────────────────────────────────────────────
   // INITIATE PAYMENT
   // Direct port of createCheckoutSession. Same order of checks as
@@ -132,16 +132,16 @@ export class PaymentsService {
   }) {
     const paystackSecretKey = process.env.PAYSTACK_SECRET_KEY as string;
     if (!paystackSecretKey) {
-      throw new Error('Paystack secret key is not configured');
+      throw new Error("Paystack secret key is not configured");
     }
     if (!process.env.FRONTEND_URL) {
-      throw new Error('FRONTEND_URL is not configured');
+      throw new Error("FRONTEND_URL is not configured");
     }
 
-    if (paymentType === 'subscription') {
+    if (paymentType === "subscription") {
       if (!subscriptionInterval) {
         throw new Error(
-          'Subscription interval is required for subscription payments',
+          "Subscription interval is required for subscription payments",
         );
       }
       if (!SUBSCRIPTION_INTERVALS.includes(subscriptionInterval)) {
@@ -152,14 +152,14 @@ export class PaymentsService {
     }
 
     const user = await this.usersService.findById(userId);
-    if (!user) throw new Error('User not found');
-    if (user.role !== 'member') {
-      throw new Error('Only members can enroll in paid classes');
+    if (!user) throw new Error("User not found");
+    if (user.role !== "member") {
+      throw new Error("Only members can enroll in paid classes");
     }
 
     const memberProfile =
       await this.memberProfileService.findActiveProfileByUserId(userId);
-    if (!memberProfile) throw new Error('Member profile not found');
+    if (!memberProfile) throw new Error("Member profile not found");
 
     // findClassById already throws NotFoundException('Class not found')
     // itself if missing — same message Express's manual check produces,
@@ -168,21 +168,22 @@ export class PaymentsService {
     // way; letting it propagate here avoids a redundant duplicate check.
     const classItem = await this.classesService.findClassById(classId);
 
-    if (paymentType === 'subscription' && classItem.recurrence === 'none') {
+    if (paymentType === "subscription" && classItem.recurrence === "none") {
       throw new Error(
-        'Subscriptions are not available for one-off classes. Please use one-time payment.',
+        "Subscriptions are not available for one-off classes. Please use one-time payment.",
       );
     }
 
     let amount: number;
-    if (paymentType === 'one-time') {
+    if (paymentType === "one-time") {
       const price = classItem.pricing.oneTime;
       if (!price) {
-        throw new Error('This class does not support one-time payments');
+        throw new Error("This class does not support one-time payments");
       }
       amount = price;
     } else {
-      const price = classItem.pricing[subscriptionInterval as ApiSubscriptionInterval];
+      const price =
+        classItem.pricing[subscriptionInterval as ApiSubscriptionInterval];
       if (!price) {
         throw new Error(
           `This class does not support ${subscriptionInterval} subscriptions`,
@@ -191,22 +192,20 @@ export class PaymentsService {
       amount = price;
     }
 
-    if (paymentType === 'one-time') {
+    if (paymentType === "one-time") {
       const existingPayment = await this.paymentsRepo.findCompletedPayment(
         userId,
         classId,
       );
       if (existingPayment) {
-        throw new Error('You are already enrolled in this class');
+        throw new Error("You are already enrolled in this class");
       }
     } else {
-      const existingSubscription = await this.paymentsRepo.findActiveSubscription(
-        userId,
-        classId,
-      );
+      const existingSubscription =
+        await this.paymentsRepo.findActiveSubscription(userId, classId);
       if (existingSubscription) {
         throw new Error(
-          'You already have an active subscription for this class',
+          "You already have an active subscription for this class",
         );
       }
     }
@@ -232,7 +231,7 @@ export class PaymentsService {
         {
           email: user.email,
           amount: amount * 100,
-          currency: 'NGN',
+          currency: "NGN",
           callback_url: `${process.env.FRONTEND_URL}/payment-success`,
           metadata: {
             userId,
@@ -246,7 +245,7 @@ export class PaymentsService {
         {
           headers: {
             Authorization: `Bearer ${paystackSecretKey}`,
-            'Content-Type': 'application/json',
+            "Content-Type": "application/json",
           },
         },
       );
@@ -263,12 +262,12 @@ export class PaymentsService {
         userId,
         classId,
         amount,
-        currency: 'NGN',
+        currency: "NGN",
         paystackReference: data.data.reference,
         paystackAccessCode: data.data.access_code,
-        status: 'pending',
-        provider: 'paystack',
-        method: 'card',
+        status: "pending",
+        provider: "paystack",
+        method: "card",
         paymentType: toDbPaymentType(paymentType),
         subscriptionInterval,
       });
@@ -296,26 +295,26 @@ export class PaymentsService {
     classId: string,
     memberProfileId: string,
   ): Promise<
-    'enrolled' | 'already-enrolled' | 'hold-expired' | 'class-full' | 'error'
+    "enrolled" | "already-enrolled" | "hold-expired" | "class-full" | "error"
   > {
     const updated = await this.classesService.confirmSeat(
       classId,
       memberProfileId,
     );
-    if (updated) return 'enrolled';
+    if (updated) return "enrolled";
 
     const reason = await this.classesService.getClassEnrollmentStatus(
       classId,
       memberProfileId,
     );
     if (
-      reason === 'already-enrolled' ||
-      reason === 'hold-expired' ||
-      reason === 'class-full'
+      reason === "already-enrolled" ||
+      reason === "hold-expired" ||
+      reason === "class-full"
     ) {
       return reason;
     }
-    return 'error';
+    return "error";
   }
 
   // ────────────────────────────────────────────────────────────────
@@ -341,11 +340,11 @@ export class PaymentsService {
     // ever finds out about a failure, so it persists "failed" and
     // releases the seat hold right away rather than leaving the record
     // stuck at "pending" forever.
-    if (data.data.status !== 'success') {
+    if (data.data.status !== "success") {
       const payment = await this.paymentsRepo.findByReference(reference);
-      if (payment && payment.status === 'pending') {
+      if (payment && payment.status === "pending") {
         await this.paymentsRepo.updateByReference(reference, {
-          status: 'failed',
+          status: "failed",
         });
 
         const memberProfile =
@@ -359,28 +358,26 @@ export class PaymentsService {
           );
         }
       }
-      throw new Error('Payment verification failed');
+      throw new Error("Payment verification failed");
     }
 
     const payment = await this.paymentsRepo.findByReference(reference);
-    if (!payment) throw new Error('Payment record not found');
-    if (payment.status === 'completed') {
+    if (!payment) throw new Error("Payment record not found");
+    if (payment.status === "completed") {
       return {
-        message: 'Payment already processed',
+        message: "Payment already processed",
         payment: this.toApiShape(payment),
       };
     }
 
     const memberProfile =
-      await this.memberProfileService.findActiveProfileByUserId(
-        payment.userId,
-      );
+      await this.memberProfileService.findActiveProfileByUserId(payment.userId);
     if (!memberProfile) {
-      throw new Error('Member profile not found for this user');
+      throw new Error("Member profile not found for this user");
     }
 
     if (!payment.classId) {
-      throw new Error('Payment has no associated class');
+      throw new Error("Payment has no associated class");
     }
 
     // Claim the seat before marking anything complete, so a
@@ -388,7 +385,7 @@ export class PaymentsService {
     // seat behind it.
     const seatResult = await this.claimSeat(payment.classId, memberProfile.id);
 
-    if (seatResult === 'hold-expired' || seatResult === 'class-full') {
+    if (seatResult === "hold-expired" || seatResult === "class-full") {
       // Money was charged but the seat is no longer available. Flag
       // for manual review instead of guessing whether to refund or
       // bump someone — that's a business decision, not a code
@@ -399,7 +396,7 @@ export class PaymentsService {
 
       await this.notificationsService.notify({
         userId: payment.userId,
-        type: 'payment_needs_review',
+        type: "payment_needs_review",
         title: "We're Looking Into Your Payment",
         message:
           "Your payment went through, but we weren't able to confirm your spot automatically. A team member will follow up shortly.",
@@ -416,19 +413,22 @@ export class PaymentsService {
       // needs-review case (only `message` is read), so there's no
       // compatibility reason to keep the stale value.
       return {
-        message: 'Payment received, pending manual review',
+        message: "Payment received, pending manual review",
         payment: this.toApiShape(updated),
       };
     }
 
-    if (seatResult === 'error') {
+    if (seatResult === "error") {
       throw new Error(
         `Unexpected error claiming seat for payment ${reference}`,
       );
     }
 
     // "enrolled" or "already-enrolled" — safe to continue.
-    if (payment.paymentType === 'subscription' && payment.subscriptionInterval) {
+    if (
+      payment.paymentType === "subscription" &&
+      payment.subscriptionInterval
+    ) {
       const startDate = new Date();
       const endDate = calculateEndDate(
         startDate,
@@ -448,14 +448,14 @@ export class PaymentsService {
         interval: payment.subscriptionInterval,
         startDate,
         endDate,
-        status: 'active',
+        status: "active",
         paymentId: payment.id,
       });
     }
 
     const updatedPayment = await this.paymentsRepo.updateByReference(
       reference,
-      { status: 'completed' },
+      { status: "completed" },
     );
 
     // Fetch the class name for a friendlier message — falls back to a
@@ -470,7 +470,7 @@ export class PaymentsService {
 
     await this.notificationsService.notify({
       userId: payment.userId,
-      type: 'payment_confirmed',
+      type: "payment_confirmed",
       title: "You're All Set!",
       message: className
         ? `Payment confirmed — you're booked into "${className}"!`
@@ -480,7 +480,7 @@ export class PaymentsService {
     });
 
     return {
-      message: 'Payment verified successfully',
+      message: "Payment verified successfully",
       payment: this.toApiShape(updatedPayment),
     };
   }
@@ -491,22 +491,22 @@ export class PaymentsService {
   // ────────────────────────────────────────────────────────────────
   async handlePaystackWebhook(signature: string, payload: string) {
     const hash = crypto
-      .createHmac('sha512', process.env.PAYSTACK_SECRET_KEY as string)
+      .createHmac("sha512", process.env.PAYSTACK_SECRET_KEY as string)
       .update(payload)
-      .digest('hex');
+      .digest("hex");
 
     if (hash !== signature) {
-      throw new Error('Invalid signature');
+      throw new Error("Invalid signature");
     }
 
     const event = JSON.parse(payload);
 
-    if (event.event === 'charge.success') {
+    if (event.event === "charge.success") {
       const { reference } = event.data;
 
       const payment = await this.paymentsRepo.findByReference(reference);
       if (!payment) return; // unknown reference, nothing to do
-      if (payment.status === 'completed') return; // already processed elsewhere
+      if (payment.status === "completed") return; // already processed elsewhere
 
       try {
         // Delegates entirely to verifyPayment() — the same function
@@ -580,7 +580,7 @@ export class PaymentsService {
   async getPaymentById(paymentId: string) {
     const payment = await this.paymentsRepo.findByIdWithRelations(paymentId);
     if (!payment) {
-      throw new Error('Payment not found');
+      throw new Error("Payment not found");
     }
     return this.toApiShape(payment);
   }
