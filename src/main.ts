@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module.js';
+import { ALLOWED_ORIGINS } from './common/cors.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -31,11 +32,7 @@ async function bootstrap() {
   // identical to your Express server.ts list so swapping which backend the
   // frontend points at doesn't also require a CORS change.
   app.enableCors({
-    origin: [
-      'http://localhost:3000',
-      'http://localhost:4000',
-      'https://gym-ontime.vercel.app',
-    ],
+    origin: ALLOWED_ORIGINS,
     credentials: true,
   });
 

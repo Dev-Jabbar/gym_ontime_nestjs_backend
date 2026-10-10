@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { TX_OPTIONS } from '../common/tx-options.js';
 import { CacheService } from '../cache/cache.service.js';
 import { CacheKeys, CLASSES_TTL_SECONDS } from '../cache/cache-keys.js';
+import { ClassEvents } from './class-events.service.js';
 
 // Every read that feeds transformClass() needs the same joins.
 const CLASS_WITH_RELATIONS = {
@@ -26,6 +27,7 @@ export class ClassesRepository {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cache: CacheService,
+    private readonly events: ClassEvents,
   ) {}
 
   // ── Seat holds ────────────────────────────────────────────────────
@@ -114,7 +116,10 @@ export class ClassesRepository {
       });
     }, TX_OPTIONS);
     // A confirmed seat changes `enrolled` in the cached class payloads.
-    if (member) await this.cache.invalidateClasses();
+    if (member) {
+      await this.cache.invalidateClasses();
+      this.events.classChanged(classId);
+    }
     return member;
   }
 
@@ -220,12 +225,14 @@ export class ClassesRepository {
   async create(data: Prisma.ClassUncheckedCreateInput) {
     const created = await this.prisma.class.create({ data });
     await this.cache.invalidateClasses();
+    this.events.classChanged(created.id);
     return created;
   }
 
   async update(id: string, data: Prisma.ClassUncheckedUpdateInput) {
     const updated = await this.prisma.class.update({ where: { id }, data });
     await this.cache.invalidateClasses();
+    this.events.classChanged(id);
     return updated;
   }
 
@@ -241,6 +248,7 @@ export class ClassesRepository {
   async delete(id: string) {
     const deleted = await this.prisma.class.delete({ where: { id } });
     await this.cache.invalidateClasses();
+    this.events.classChanged(id);
     return deleted;
   }
 
@@ -257,6 +265,7 @@ export class ClassesRepository {
       data: { classId, memberProfileId },
     });
     await this.cache.invalidateClasses();
+    this.events.classChanged(classId);
     return member;
   }
 
@@ -265,6 +274,7 @@ export class ClassesRepository {
       where: { id: membershipId },
     });
     await this.cache.invalidateClasses();
+    this.events.classChanged(removed.classId);
     return removed;
   }
 

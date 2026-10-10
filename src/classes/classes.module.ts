@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { ClassesService } from './classes.service.js';
 import { ClassesRepository } from './classes.repository.js';
 import { ClassesController } from './classes.controller.js';
+import { ClassEvents } from './class-events.service.js';
+import { ClassesGateway } from './classes.gateway.js';
 import { JwtGuardsModule } from '../auth/jwt-guards.module.js';
 
 // Imports JwtGuardsModule directly (same pattern as UsersModule) — this
@@ -10,7 +12,7 @@ import { JwtGuardsModule } from '../auth/jwt-guards.module.js';
 // don't route through another feature module.
 @Module({
   controllers: [ClassesController],
-  providers: [ClassesService, ClassesRepository],
+  providers: [ClassesService, ClassesRepository, ClassEvents, ClassesGateway],
   exports: [ClassesService],
   imports: [JwtGuardsModule],
 })
