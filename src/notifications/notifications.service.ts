@@ -1,10 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import type { Notification, NotificationType } from '@prisma/client';
 import { NotificationsRepository } from './notifications.repository.js';
+import { DeviceTokensRepository } from './device-tokens.repository.js';
+import { PushService } from './push.service.js';
 
 @Injectable()
 export class NotificationsService {
-  constructor(private readonly notificationsRepo: NotificationsRepository) {}
+  constructor(
+    private readonly notificationsRepo: NotificationsRepository,
+    private readonly deviceTokensRepo: DeviceTokensRepository,
+    private readonly push: PushService,
+  ) {}
 
   // The frontend (useNotifications / NotificationBell) was written against
   // Mongoose shapes: it keys and matches on `_id` and reads `relatedClass` /
@@ -73,6 +79,31 @@ export class NotificationsService {
       });
     } catch (err) {
       console.error('Failed to create notification:', err);
+      return;
     }
+
+    // Also push to the user's devices. Fire-and-forget: PushService never
+    // throws, and the caller must not wait on Firebase.
+    const data: Record<string, string> = { type: params.type };
+    if (params.classId) data.classId = params.classId;
+    if (params.paymentId) data.paymentId = params.paymentId;
+    void this.push.sendToUser(params.userId, {
+      title: params.title,
+      body: params.message,
+      data,
+    });
+  }
+
+  async registerDeviceToken(
+    userId: string,
+    token: string,
+    platform: string = 'web',
+  ) {
+    await this.deviceTokensRepo.upsert(userId, token, platform);
+  }
+
+  // True if a token of this user was removed.
+  unregisterDeviceToken(userId: string, token: string) {
+    return this.deviceTokensRepo.deleteForUser(userId, token);
   }
 }

@@ -1,7 +1,8 @@
-import { Controller, Get, NotFoundException, Param, ParseUUIDPipe, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, NotFoundException, Param, ParseUUIDPipe, Post, Put, UseGuards } from '@nestjs/common';
 import { NotificationsService } from './notifications.service.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
+import { RegisterDeviceTokenDto, UnregisterDeviceTokenDto } from './dto/device-token.dto.js';
 
 // Mounted at /api/notifications. All three routes just need a valid
 // login (protect() with no roles in Express) — no RolesGuard needed here,
@@ -40,5 +41,25 @@ export class NotificationsController {
   async markAllAsRead(@CurrentUser() user: any) {
     await this.notificationsService.markAllNotificationsAsRead(user.id);
     return { success: true, message: 'All notifications marked as read' };
+  }
+
+  // POST /api/notifications/device-token  (register this browser for push)
+  @Post('device-token')
+  async registerDeviceToken(
+    @Body() dto: RegisterDeviceTokenDto,
+    @CurrentUser() user: any,
+  ) {
+    await this.notificationsService.registerDeviceToken(user.id, dto.token, dto.platform);
+    return { success: true, message: 'Device registered for push notifications' };
+  }
+
+  // DELETE /api/notifications/device-token  (unregister, e.g. on logout)
+  @Delete('device-token')
+  async unregisterDeviceToken(
+    @Body() dto: UnregisterDeviceTokenDto,
+    @CurrentUser() user: any,
+  ) {
+    await this.notificationsService.unregisterDeviceToken(user.id, dto.token);
+    return { success: true, message: 'Device unregistered' };
   }
 }

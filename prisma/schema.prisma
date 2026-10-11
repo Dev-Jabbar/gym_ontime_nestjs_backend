@@ -136,6 +136,7 @@ model User {
   payments       Payment[]
   subscriptions  ClassSubscription[]
   notifications  Notification[]
+  deviceTokens   DeviceToken[]
 
   @@index([isActive])
 }
@@ -319,4 +320,18 @@ model ClassSubscription {
 
   @@index([userId, classId, status])
   @@index([status, endDate])
+}
+
+// ── DeviceToken ───────────────────────────────────────────────────
+// One row per browser/device registered for push notifications (FCM).
+model DeviceToken {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token      String   @unique
+  platform   String   @default("web")
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime @default(now())
+
+  @@index([userId])
 }
