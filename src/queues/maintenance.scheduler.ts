@@ -2,13 +2,19 @@ import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import {
+  CLASS_REMINDER_JOB,
+  CLASS_REMINDER_SCHEDULER_ID,
   MAINTENANCE_QUEUE,
   SUBSCRIPTION_EXPIRY_JOB,
   SUBSCRIPTION_EXPIRY_SCHEDULER_ID,
   SWEEP_JOB,
   SWEEP_SCHEDULER_ID,
 } from './queue.constants.js';
-import { subscriptionExpiryIntervalMs, sweepIntervalMs } from './queue.config.js';
+import {
+  classReminderIntervalMs,
+  subscriptionExpiryIntervalMs,
+  sweepIntervalMs,
+} from './queue.config.js';
 
 // Shared retry policy for every sweep job: 3 attempts, exponential
 // backoff starting at 30s (30s, 60s). Per-payment failures are handled
@@ -68,6 +74,22 @@ export class MaintenanceScheduler implements OnApplicationBootstrap {
         this.logger.error(
           `Could not schedule subscription expiry: ${err.message}`,
         ),
+      );
+
+    // Third schedule: class reminders (own scheduler id, same retry policy).
+    void this.queue
+      .upsertJobScheduler(
+        CLASS_REMINDER_SCHEDULER_ID,
+        { every: classReminderIntervalMs() },
+        { name: CLASS_REMINDER_JOB, opts: SWEEP_JOB_OPTIONS },
+      )
+      .then(() =>
+        this.logger.log(
+          `Class reminders scheduled every ${classReminderIntervalMs() / 60000} minute(s)`,
+        ),
+      )
+      .catch((err: Error) =>
+        this.logger.error(`Could not schedule class reminders: ${err.message}`),
       );
   }
 }

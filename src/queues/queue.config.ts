@@ -33,6 +33,15 @@ export const sweepIntervalMs = () =>
 export const subscriptionExpiryIntervalMs = () =>
   minutes('SUBSCRIPTION_EXPIRY_INTERVAL_MINUTES', 60) * 60 * 1000;
 
+// Every 15 minutes, same cadence as the Express classReminder cron. The
+// window below is much larger than the interval, so no class is missed.
+export const classReminderIntervalMs = () =>
+  minutes('CLASS_REMINDER_INTERVAL_MINUTES', 15) * 60 * 1000;
+
+// A class is reminded once its session starts within this many minutes.
+export const reminderWindowMinutes = () =>
+  minutes('CLASS_REMINDER_WINDOW_MINUTES', 60);
+
 // A pending payment must be this old before the sweep re-checks it
 // (gives the normal checkout + redirect + verify flow time to finish).
 export const staleAfterMinutes = () => minutes('PAYMENT_STALE_MINUTES', 30);

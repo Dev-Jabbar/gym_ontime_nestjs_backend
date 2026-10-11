@@ -3,6 +3,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { JwtGuardsModule } from '../auth/jwt-guards.module.js';
 import { PaymentsModule } from '../payments/payments.module.js';
 import { ClassesModule } from '../classes/classes.module.js';
+import { NotificationsModule } from '../notifications/notifications.module.js';
 import { MAINTENANCE_QUEUE } from './queue.constants.js';
 import { QUEUE_PREFIX, buildQueueConnection } from './queue.config.js';
 import { MaintenanceService } from './maintenance.service.js';
@@ -22,6 +23,7 @@ import { MaintenanceController } from './maintenance.controller.js';
     JwtGuardsModule,
     PaymentsModule,
     ClassesModule,
+    NotificationsModule,
   ],
   controllers: [MaintenanceController],
   providers: [MaintenanceService, MaintenanceProcessor, MaintenanceScheduler],

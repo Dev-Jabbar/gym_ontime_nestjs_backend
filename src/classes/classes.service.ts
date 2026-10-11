@@ -103,6 +103,15 @@ export class ClassesService {
     return 'unknown';
   }
 
+  // Used by the class-reminder job (MaintenanceService).
+  findClassesForReminders(now: Date) {
+    return this.classesRepo.findForReminders(now);
+  }
+
+  markReminderSent(id: string, at: Date) {
+    return this.classesRepo.markReminderSent(id, at);
+  }
+
   // Lightweight name lookup for notification text; null if class is gone.
   findClassName(id: string) {
     return this.classesRepo.findNameById(id);

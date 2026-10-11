@@ -220,7 +220,7 @@ Base URL: `/api`. Authentication uses the session cookie set at login. Payments 
 | | `POST /payments/webhook` | Public (verified by HMAC signature) |
 | **Notifications** | `GET /notifications/my-notifications`, `PUT /notifications/:id/read`, `PUT /notifications/mark-all-read` | Auth |
 | **Uploads** | `POST /uploads/signature` | Auth |
-| **Maintenance** | `POST /maintenance/run` (queue a payment sweep now), `POST /maintenance/expire-subscriptions` (run subscription expiry now) | admin |
+| **Maintenance** | `POST /maintenance/run` (queue a payment sweep now), `POST /maintenance/expire-subscriptions` (run subscription expiry now), `POST /maintenance/class-reminders` (send class reminders now) | admin |
 
 A Postman collection is used for manual testing. OpenAPI/Swagger documentation is on the [roadmap](#roadmap).
 

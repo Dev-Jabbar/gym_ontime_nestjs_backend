@@ -5,6 +5,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
 import {
+  CLASS_REMINDER_JOB,
   MAINTENANCE_QUEUE,
   SUBSCRIPTION_EXPIRY_JOB,
   SWEEP_JOB,
@@ -41,6 +42,17 @@ export class MaintenanceController {
     return {
       success: true,
       message: 'Subscription expiry queued. Watch the server log for the result.',
+      data: { jobId: job.id },
+    };
+  }
+
+  // Same idea for class reminders: test without waiting for the schedule.
+  @Post('class-reminders')
+  async classRemindersNow() {
+    const job = await this.queue.add(CLASS_REMINDER_JOB, {}, SWEEP_JOB_OPTIONS);
+    return {
+      success: true,
+      message: 'Class reminders queued. Watch the server log for the result.',
       data: { jobId: job.id },
     };
   }

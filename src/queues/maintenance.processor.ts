@@ -2,12 +2,14 @@ import { Logger } from '@nestjs/common';
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import type { Job } from 'bullmq';
 import {
+  CLASS_REMINDER_JOB,
   MAINTENANCE_QUEUE,
   SUBSCRIPTION_EXPIRY_JOB,
   SWEEP_JOB,
 } from './queue.constants.js';
 import {
   MaintenanceService,
+  type ClassReminderResult,
   type SubscriptionExpiryResult,
   type SweepResult,
 } from './maintenance.service.js';
@@ -22,11 +24,16 @@ export class MaintenanceProcessor extends WorkerHost {
     super();
   }
 
-  async process(job: Job): Promise<SweepResult | SubscriptionExpiryResult | void> {
+  async process(
+    job: Job,
+  ): Promise<
+    SweepResult | SubscriptionExpiryResult | ClassReminderResult | void
+  > {
     if (job.name === SWEEP_JOB) return this.maintenance.runSweep();
     if (job.name === SUBSCRIPTION_EXPIRY_JOB) {
       return this.maintenance.runSubscriptionExpiry();
     }
+    if (job.name === CLASS_REMINDER_JOB) return this.maintenance.runClassReminders();
     this.logger.warn(`Ignoring unknown job "${job.name}" (id ${job.id})`);
   }
 

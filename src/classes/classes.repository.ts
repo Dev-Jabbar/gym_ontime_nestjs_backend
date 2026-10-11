@@ -184,6 +184,39 @@ export class ClassesRepository {
     });
   }
 
+  // Classes that could need a reminder now: they have at least one active
+  // member, and are either recurring or a one-off that has not started yet.
+  // NOT cached: the reminder job needs fresh data.
+  findForReminders(now: Date) {
+    return this.prisma.class.findMany({
+      where: {
+        members: { some: { memberProfile: { isActive: true } } },
+        OR: [{ recurrence: { not: 'none' } }, { schedule: { gt: now } }],
+      },
+      select: {
+        id: true,
+        name: true,
+        schedule: true,
+        recurrence: true,
+        recurrenceDays: true,
+        lastReminderSentAt: true,
+        members: {
+          where: { memberProfile: { isActive: true } },
+          select: { memberProfile: { select: { userId: true } } },
+        },
+      },
+    });
+  }
+
+  // updateMany so a class deleted meanwhile is a no-op, not an error. Does
+  // not touch the cache: lastReminderSentAt is not part of the API shape.
+  async markReminderSent(id: string, at: Date): Promise<void> {
+    await this.prisma.class.updateMany({
+      where: { id },
+      data: { lastReminderSentAt: at },
+    });
+  }
+
   async findNameById(id: string): Promise<string | null> {
     const row = await this.prisma.class.findUnique({
       where: { id },
