@@ -11,6 +11,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import type { RawBodyRequest } from '@nestjs/common';
 import type { Request } from 'express';
 import { PaymentsService } from './payments.service.js';
 import { InitiatePaymentDto } from './dto/initiate-payment.dto.js';
@@ -44,35 +45,40 @@ export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}
 
   // POST /api/payments/webhook — PUBLIC, no guard, matches Express.
+  //
+  // The HMAC is computed over req.rawBody (the exact bytes Paystack sent,
+  // kept by `rawBody: true` in main.ts), NOT JSON.stringify(req.body).
+  // @Req() is used instead of a DTO @Body() so the ValidationPipe never
+  // touches the payload.
   @Post('webhook')
-  async webhook(@Req() req: Request) {
-    try {
-      const signature = req.headers['x-paystack-signature'] as string;
-      if (!signature) {
-        throw new HttpException(
-          { success: false, message: 'No signature provided' },
-          HttpStatus.BAD_REQUEST,
-        );
-      }
+  async webhook(@Req() req: RawBodyRequest<Request>) {
+    const signature = req.headers['x-paystack-signature'];
+    if (typeof signature !== 'string' || !signature) {
+      throw new HttpException(
+        { success: false, message: 'No signature provided' },
+        HttpStatus.UNAUTHORIZED,
+      );
+    }
 
-      // Deliberately @Req() + raw req.body, NOT @Body() with a typed
-      // DTO. The global ValidationPipe's whitelist:true only runs
-      // against parameters typed as a DTO class — reading req.body
-      // directly here bypasses that pipeline entirely, so the object
-      // JSON.stringify'd below is guaranteed byte-identical to what
-      // Nest's underlying Express body-parser produced, with nothing
-      // silently stripped. This matches Express's own
-      // JSON.stringify(req.body) exactly — same fragility (re-stringifying
-      // an already-parsed body isn't the same as verifying the raw
-      // bytes Paystack actually sent), not a new one, and it avoids a
-      // real risk that would otherwise exist: whitelist stripping an
-      // "unknown" property from the payload right before it's hashed,
-      // which would break the HMAC check for a reason that'd be very
-      // hard to trace back to the ValidationPipe.
-      const payload = JSON.stringify(req.body);
-      await this.paymentsService.handlePaystackWebhook(signature, payload);
+    const rawBody = req.rawBody;
+    if (!rawBody || rawBody.length === 0) {
+      throw new HttpException(
+        { success: false, message: 'Empty or unreadable request body' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    try {
+      await this.paymentsService.handlePaystackWebhook(signature, rawBody);
       return { success: true, message: 'Webhook processed' };
     } catch (err: any) {
+      if (err instanceof HttpException) {
+        // Keep the real status (e.g. 401 for a bad signature).
+        throw new HttpException(
+          { success: false, message: err.message },
+          err.getStatus(),
+        );
+      }
       console.error('Webhook error:', err);
       throw new HttpException(
         { success: false, message: err.message },

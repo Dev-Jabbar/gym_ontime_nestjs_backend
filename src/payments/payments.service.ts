@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import axios from 'axios';
 import crypto from 'crypto';
 import { PaymentsRepository } from './payments.repository.js';
@@ -490,17 +490,21 @@ export class PaymentsService {
   // PAYSTACK WEBHOOK
   // Direct port of payment.webhook.ts's handlePaystackWebhook.
   // ────────────────────────────────────────────────────────────────
-  async handlePaystackWebhook(signature: string, payload: string) {
-    const hash = crypto
+  async handlePaystackWebhook(signature: string, rawBody: Buffer | string) {
+    // HMAC-SHA512 over the exact bytes Paystack sent (see main.ts rawBody).
+    const expected = crypto
       .createHmac('sha512', process.env.PAYSTACK_SECRET_KEY as string)
-      .update(payload)
+      .update(rawBody)
       .digest('hex');
 
-    if (hash !== signature) {
-      throw new Error('Invalid signature');
+    // timingSafeEqual throws on different lengths, so check length first.
+    const a = Buffer.from(expected, 'utf8');
+    const b = Buffer.from(signature, 'utf8');
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+      throw new UnauthorizedException('Invalid signature');
     }
 
-    const event = JSON.parse(payload);
+    const event = JSON.parse(rawBody.toString('utf8'));
 
     if (event.event === 'charge.success') {
       const { reference } = event.data;

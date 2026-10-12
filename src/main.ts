@@ -2,11 +2,19 @@ import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module.js';
 import { ALLOWED_ORIGINS } from './common/cors.js';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // rawBody: true makes Nest keep the exact bytes of every JSON request on
+  // req.rawBody (a Buffer), next to the parsed req.body. The Paystack
+  // webhook needs it: Paystack signs the bytes it sent, and re-serialising
+  // the parsed body with JSON.stringify can differ (spacing, key order,
+  // number formatting) and wrongly fail the signature check.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    rawBody: true,
+  });
 
   // Equivalent of app.use(cookieParser()) in your Express server.ts —
   // without this, req.cookies is undefined and JwtAuthGuard can't read
