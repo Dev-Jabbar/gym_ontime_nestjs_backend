@@ -3,6 +3,8 @@ import { cert, getApp, getApps, initializeApp } from 'firebase-admin/app';
 import type { App } from 'firebase-admin/app';
 import { getMessaging } from 'firebase-admin/messaging';
 import { DeviceTokensRepository } from './device-tokens.repository.js';
+import { SpanStatusCode } from '@opentelemetry/api';
+import { withSpan } from '../telemetry/with-span.js';
 
 export interface PushPayload {
   title: string;
@@ -58,32 +60,43 @@ export class PushService implements OnModuleInit {
 
   async sendToUser(userId: string, payload: PushPayload): Promise<void> {
     if (!this.app) return;
-    try {
-      const tokens = await this.tokens.findTokensByUserId(userId);
-      if (tokens.length === 0) return;
+    const app = this.app;
+    // One span around the whole push, so a payment trace shows how long the
+    // notification side took (it runs after the response, fire-and-forget).
+    await withSpan('push.sendToUser', { 'user.id': userId }, async (span) => {
+      try {
+        const tokens = await this.tokens.findTokensByUserId(userId);
+        span.setAttribute('push.tokens', tokens.length);
+        if (tokens.length === 0) return;
 
-      const res = await getMessaging(this.app).sendEachForMulticast({
-        tokens,
-        notification: { title: payload.title, body: payload.body },
-        data: payload.data,
-      });
+        const res = await getMessaging(app).sendEachForMulticast({
+          tokens,
+          notification: { title: payload.title, body: payload.body },
+          data: payload.data,
+        });
+        span.setAttribute('push.sent', res.successCount);
+        span.setAttribute('push.failed', res.failureCount);
 
-      const dead = res.responses.flatMap((r, i) =>
-        !r.success && r.error && DEAD_TOKEN_CODES.has(r.error.code)
-          ? [tokens[i]]
-          : [],
-      );
-      if (dead.length > 0) {
-        const removed = await this.tokens.deleteTokens(dead);
-        this.logger.log(`Removed ${removed} dead device token(s)`);
+        const dead = res.responses.flatMap((r, i) =>
+          !r.success && r.error && DEAD_TOKEN_CODES.has(r.error.code)
+            ? [tokens[i]]
+            : [],
+        );
+        if (dead.length > 0) {
+          const removed = await this.tokens.deleteTokens(dead);
+          this.logger.log(`Removed ${removed} dead device token(s)`);
+        }
+        this.logger.log(
+          `push user=${userId} sent=${res.successCount} failed=${res.failureCount}`,
+        );
+      } catch (err) {
+        // Still never throws: just mark the span as failed and log.
+        span.recordException(err as Error);
+        span.setStatus({ code: SpanStatusCode.ERROR, message: (err as Error).message });
+        this.logger.warn(
+          `Push failed for user ${userId}: ${(err as Error).message}`,
+        );
       }
-      this.logger.log(
-        `push user=${userId} sent=${res.successCount} failed=${res.failureCount}`,
-      );
-    } catch (err) {
-      this.logger.warn(
-        `Push failed for user ${userId}: ${(err as Error).message}`,
-      );
-    }
+    });
   }
 }

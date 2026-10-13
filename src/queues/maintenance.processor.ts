@@ -13,6 +13,7 @@ import {
   type SubscriptionExpiryResult,
   type SweepResult,
 } from './maintenance.service.js';
+import { withSpan } from '../telemetry/with-span.js';
 
 // Thin on purpose: route the job to MaintenanceService. concurrency 1 so
 // two sweeps never run at once on this instance.
@@ -24,7 +25,30 @@ export class MaintenanceProcessor extends WorkerHost {
     super();
   }
 
+  // One span per job run. It is also the parent of the Postgres, Redis and
+  // HTTP spans created while the job runs, so a whole sweep reads as one trace.
   async process(
+    job: Job,
+  ): Promise<
+    SweepResult | SubscriptionExpiryResult | ClassReminderResult | void
+  > {
+    return withSpan(
+      `job ${job.name}`,
+      {
+        'queue.name': MAINTENANCE_QUEUE,
+        'job.name': job.name,
+        'job.id': String(job.id),
+        'job.attempt': job.attemptsMade + 1,
+      },
+      async (span) => {
+        const result = await this.route(job);
+        if (result) span.setAttribute('job.result', JSON.stringify(result));
+        return result;
+      },
+    );
+  }
+
+  private async route(
     job: Job,
   ): Promise<
     SweepResult | SubscriptionExpiryResult | ClassReminderResult | void

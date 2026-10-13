@@ -282,6 +282,21 @@ If `REDIS_URL` is not set, the queue module is not loaded.
 - Writes that change classes, trainers or members invalidate the affected keys after the transaction commits.
 - If Redis is down, the API logs a throttled warning and serves from Postgres, then reconnects automatically.
 
+## Observability (OpenTelemetry tracing)
+
+Tracing is optional and off by default. When on, every request and background job becomes a trace you can open in Jaeger: HTTP request, Nest controller, Postgres queries, Redis calls, outgoing HTTP (Paystack), queue jobs and the push send, each with its timing.
+
+```bash
+docker compose up -d          # starts Jaeger (UI: http://localhost:16686)
+# in .env:
+OTEL_ENABLED=true
+npm run start:dev
+```
+
+Then call the API and open http://localhost:16686, pick the `gym-ontime-backend` service and click **Find Traces**. Optional env: `OTEL_SERVICE_NAME`, `OTEL_EXPORTER_OTLP_ENDPOINT` (default `http://localhost:4318`). With `OTEL_ENABLED` unset nothing is loaded and the app behaves exactly as before.
+
+Notes: `src/main.ts` starts tracing and only then imports the app (`src/bootstrap.ts`), because OpenTelemetry must wrap `express`, `pg` and `ioredis` before they load. Database and Redis spans are only recorded inside a request or job (BullMQ polls Redis constantly and would otherwise flood Jaeger). Traces are held in memory by Jaeger and lost when the container stops.
+
 ## Testing
 
 - The test runner is Vitest (`npm test`, `npm run test:e2e`).
@@ -327,7 +342,6 @@ To report a vulnerability, please open a private security advisory on GitHub ins
 
 These are documented rather than hidden:
 
-- The webhook signature is computed over the re-serialized JSON body instead of the raw request bytes; it should use the raw body.
 - Booking a class whose date has already passed is not rejected.
 - `GET /trainers` and `GET /trainers/:id` are public to match the original API. Trainer profiles include a phone number, so trim or restrict them before production use.
 - The session cookie is `sameSite: lax` and not marked `secure`; it needs to become environment-aware for a cross-domain deployment.
@@ -337,11 +351,11 @@ These are documented rather than hidden:
 ## Roadmap
 
 1. Automated tests for payments, seat holds and the maintenance job, then CI
-2. Production hardening: raw-body webhook signature check, health endpoint, `helmet`, rate limiting, env validation at boot, tightened trainer endpoints
+2. Production hardening: health endpoint, `helmet`, rate limiting, env validation at boot, tightened trainer endpoints
 3. OpenAPI / Swagger documentation
 4. WebSocket gateway for live class capacity
 5. Firebase push notifications and class reminders
-6. OpenTelemetry tracing
+6. OpenTelemetry tracing (done)
 7. Docker Compose and Kubernetes manifests
 
 ## License

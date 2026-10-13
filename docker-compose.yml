@@ -1,0 +1,16 @@
+# Local observability: Jaeger (trace viewer). Step 9 will extend this file
+# with the app and Redis.
+#
+#   docker compose up -d      start Jaeger
+#   docker compose down       stop it (traces are kept in memory only)
+#
+# UI:   http://localhost:16686
+# OTLP: the backend sends traces to http://localhost:4318 (HTTP)
+services:
+  jaeger:
+    image: cr.jaegertracing.io/jaegertracing/jaeger:2.20.0
+    container_name: gym-jaeger
+    ports:
+      - "16686:16686" # Jaeger UI
+      - "4318:4318" # OTLP over HTTP (what the backend uses)
+      - "4317:4317" # OTLP over gRPC
