@@ -60,9 +60,12 @@ export async function startTracing(): Promise<void> {
       traceExporter: new OTLPTraceExporter({ url }),
       instrumentations: [
         new HttpInstrumentation({
-          // Skip browser preflights and socket.io polling: pure noise.
+          // Skip browser preflights, socket.io polling and health probes
+          // (hit every few seconds by the platform): pure noise.
           ignoreIncomingRequestHook: (req) =>
-            req.method === 'OPTIONS' || !!req.url?.startsWith('/socket.io/'),
+            req.method === 'OPTIONS' ||
+            !!req.url?.startsWith('/socket.io/') ||
+            !!req.url?.startsWith('/api/health'),
         }),
         // Nest already gives one span per controller handler; hide Express's
         // per-middleware spans (cookie-parser, json, cors...).

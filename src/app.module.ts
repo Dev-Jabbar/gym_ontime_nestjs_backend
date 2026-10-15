@@ -14,6 +14,7 @@ import { TrainerProfileModule } from './trainer-profile/trainer-profile.module.j
 import { UploadModule } from './upload/upload.module.js';
 import { PaymentsModule } from './payments/payments.module.js';
 import { QueuesModule } from './queues/queues.module.js';
+import { HealthModule } from './health/health.module.js';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { QueuesModule } from './queues/queues.module.js';
     TrainerProfileModule,
     UploadModule,
     PaymentsModule,
+    HealthModule,
     // Bull queue (Step 5). Needs Redis; skipped when REDIS_URL is unset.
     // main.ts loads .env before this file is evaluated, so the check is safe.
     // QueuesModule reads REDIS_URL lazily (forRootAsync), so importing it

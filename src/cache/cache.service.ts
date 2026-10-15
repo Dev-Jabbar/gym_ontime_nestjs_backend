@@ -129,6 +129,20 @@ export class CacheService implements OnModuleDestroy {
   }
 
   /**
+   * For the health endpoint. 'disabled' = no REDIS_URL (not a failure);
+   * 'down' if Redis does not answer (commandTimeout is 500ms and the
+   * offline queue is off, so this fails fast instead of hanging).
+   */
+  async ping(): Promise<'up' | 'down' | 'disabled'> {
+    if (!this.client) return 'disabled';
+    try {
+      return (await this.client.ping()) === 'PONG' ? 'up' : 'down';
+    } catch {
+      return 'down';
+    }
+  }
+
+  /**
    * Call AFTER a write has committed (after the $transaction promise
    * resolves), never before: invalidating first would let a concurrent read
    * re-cache the not-yet-committed old data.
