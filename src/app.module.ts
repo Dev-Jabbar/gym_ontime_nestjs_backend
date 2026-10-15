@@ -39,6 +39,8 @@ import { QueuesModule } from './queues/queues.module.js';
     PaymentsModule,
     // Bull queue (Step 5). Needs Redis; skipped when REDIS_URL is unset.
     // main.ts loads .env before this file is evaluated, so the check is safe.
+    // QueuesModule reads REDIS_URL lazily (forRootAsync), so importing it
+    // without Redis configured no longer crashes the app.
     ...(process.env.REDIS_URL ? [QueuesModule] : []),
   ],
   controllers: [AppController],

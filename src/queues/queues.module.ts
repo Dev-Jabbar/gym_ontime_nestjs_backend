@@ -15,9 +15,15 @@ import { MaintenanceController } from './maintenance.controller.js';
 // running without Redis still works, just without the scheduled sweep.
 @Module({
   imports: [
-    BullModule.forRoot({
-      connection: buildQueueConnection(),
-      prefix: QUEUE_PREFIX,
+    // forRootAsync: the factory runs only when this module is actually
+    // instantiated, NOT when the file is imported. A plain forRoot({
+    // connection: buildQueueConnection() }) would read REDIS_URL at import
+    // time and crash the whole app with `Invalid URL` when it is unset.
+    BullModule.forRootAsync({
+      useFactory: () => ({
+        connection: buildQueueConnection(),
+        prefix: QUEUE_PREFIX,
+      }),
     }),
     BullModule.registerQueue({ name: MAINTENANCE_QUEUE }),
     JwtGuardsModule,

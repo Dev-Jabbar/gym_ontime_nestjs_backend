@@ -5,8 +5,14 @@ import type { ConnectionOptions } from 'bullmq';
 // and deletes by the `classes:` prefix only.
 export const QUEUE_PREFIX = 'gymq';
 
+// Call this lazily (inside a factory), never at module top level: it throws
+// if REDIS_URL is unset or invalid.
 export function buildQueueConnection(): ConnectionOptions {
-  const url = new URL(process.env.REDIS_URL as string);
+  const raw = process.env.REDIS_URL;
+  if (!raw) {
+    throw new Error('REDIS_URL is not set: the job queue needs Redis.');
+  }
+  const url = new URL(raw);
   const db = Number(process.env.QUEUE_REDIS_DB ?? 1);
 
   return {
