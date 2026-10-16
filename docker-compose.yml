@@ -1,12 +1,61 @@
-# Local observability: Jaeger (trace viewer). Step 9 will extend this file
-# with the app and Redis.
+# Gym Ontime: one command runs the API + Redis + Jaeger (Postgres stays on Neon).
 #
-#   docker compose up -d      start Jaeger
-#   docker compose down       stop it (traces are kept in memory only)
+#   docker compose up -d --build      build the API image and start everything
+#   docker compose logs -f api        follow the API log
+#   docker compose down               stop everything (Jaeger traces are in memory only)
 #
-# UI:   http://localhost:16686
-# OTLP: the backend sends traces to http://localhost:4318 (HTTP)
+# Day-to-day coding (API on your PC with `npm run start:dev`, infra in Docker):
+#   docker compose up -d redis jaeger
+#
+# URLs:  API http://localhost:3001/api/health   Jaeger http://localhost:16686
+#
+# Secrets come from your local `.env` (never committed, never copied into the
+# image). The three values under `environment:` below override the `.env`
+# values that only make sense outside Docker (localhost -> service names).
+#
+# Ports: stop the standalone containers first so ports 6379, 16686, 4317 and
+# 4318 are free:   docker stop gym-redis gym-jaeger
+#
+# Notes:
+#  - NODE_ENV is NOT forced here: it follows your .env (development -> a cookie
+#    that works over plain http). With NODE_ENV=production over http://localhost
+#    also set COOKIE_CROSS_SITE=false, or login will not stick.
+#  - Tracing is on only when your .env has OTEL_ENABLED=true.
 services:
+  api:
+    build: .
+    image: gym-ontime-backend:local
+    init: true
+    env_file:
+      - .env
+    environment:
+      PORT: "3001"
+      REDIS_URL: redis://redis:6379
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+    ports:
+      - "3001:3001"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 8s
+      start_period: 40s
+      retries: 3
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
   jaeger:
     image: cr.jaegertracing.io/jaegertracing/jaeger:2.20.0
     container_name: gym-jaeger
@@ -14,3 +63,4 @@ services:
       - "16686:16686" # Jaeger UI
       - "4318:4318" # OTLP over HTTP (what the backend uses)
       - "4317:4317" # OTLP over gRPC
+    restart: unless-stopped

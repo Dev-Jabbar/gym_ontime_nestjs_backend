@@ -21,6 +21,7 @@ This is a full rebuild of an earlier Express + MongoDB backend onto **NestJS, Pr
 - [Background jobs](#background-jobs)
 - [Caching](#caching)
 - [Testing](#testing)
+- [Docker](#docker)
 - [Deployment](#deployment)
 - [Security](#security)
 - [Troubleshooting](#troubleshooting)
@@ -302,6 +303,25 @@ Notes: `src/main.ts` starts tracing and only then imports the app (`src/bootstra
 - The test runner is Vitest (`npm test`, `npm run test:e2e`).
 - **Current state:** automated coverage is minimal (only the default spec exists). Behaviour has been verified manually against a live database, including the payment flow, seat holds, the maintenance job (abandoned payments, unverified paid payments, hold expiry, Redis outage and retry paths) and cache fail-open.
 - Writing automated tests for the payment service, seat holds and the maintenance job is the top roadmap item.
+
+## Docker
+
+One command runs the API, Redis and Jaeger (Postgres stays on Neon):
+
+```bash
+cp .env.example .env            # fill in real values (never commit .env)
+docker stop gym-redis gym-jaeger 2>/dev/null   # free the ports if you ran them by hand
+docker compose up -d --build
+curl http://localhost:3001/api/health
+```
+
+- The image is a multi-stage build that runs `node dist/main.js` as a non-root user. Secrets are never baked in: they come from `.env` at run time.
+- Compose overrides `REDIS_URL` and `OTEL_EXPORTER_OTLP_ENDPOINT` to point at the `redis` and `jaeger` containers.
+- Migrations are a separate release step, not run at container start. Use Neon's direct (non-pooler) connection string:
+  `docker compose run --rm api npx prisma migrate deploy`
+- Seed an admin: `docker compose run --rm -e ADMIN_PASSWORD=... api node dist/seed/admin.seed.js`
+- Coding on your PC instead? `docker compose up -d redis jaeger`, then `npm run start:dev`.
+- `docker build` uses `npm ci`, so `package-lock.json` must be committed and in sync with `package.json`.
 
 ## Deployment
 
