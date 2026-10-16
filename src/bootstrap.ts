@@ -1,13 +1,18 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module.js';
 import { ALLOWED_ORIGINS } from './common/cors.js';
+import { validateEnv } from './common/env.validation.js';
 
 // The real app start-up. main.ts loads this AFTER tracing has started (see
 // the note in main.ts), so it is imported dynamically, never statically.
 async function bootstrap() {
+  // Stop right away, with a clear message, if a required setting is missing.
+  validateEnv();
+
   // rawBody: true makes Nest keep the exact bytes of every JSON request on
   // req.rawBody (a Buffer), next to the parsed req.body. The Paystack
   // webhook needs it: Paystack signs the bytes it sent, and re-serialising
@@ -16,6 +21,23 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     rawBody: true,
   });
+
+  // Behind a platform proxy (Render, Railway, Fly, Kubernetes ingress) every
+  // request arrives from the proxy's address, so without this the login rate
+  // limit would see ONE client for everybody and lock real users out
+  // together. TRUST_PROXY_HOPS = how many proxies sit in front of the app:
+  // default 1 in production (a single platform proxy), off locally.
+  const hops = Number(
+    process.env.TRUST_PROXY_HOPS ??
+      (process.env.NODE_ENV === 'production' ? 1 : 0),
+  );
+  if (Number.isInteger(hops) && hops > 0) app.set('trust proxy', hops);
+
+  // Standard security headers (nosniff, frame protection, HSTS over https,
+  // no X-Powered-By ...). This API only returns JSON, so helmet's default
+  // Content-Security-Policy is fine. CORP is relaxed to cross-origin so the
+  // Vercel frontend can keep reading responses from another domain.
+  app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 
   // Equivalent of app.use(cookieParser()) in your Express server.ts —
   // without this, req.cookies is undefined and JwtAuthGuard can't read

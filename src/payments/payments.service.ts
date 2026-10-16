@@ -5,6 +5,7 @@ import { PaymentsRepository } from './payments.repository.js';
 import { UsersService } from '../users/users.service.js';
 import { MemberProfileService } from '../member-profile/member-profile.service.js';
 import { ClassesService } from '../classes/classes.service.js';
+import { isPastOneOffClass } from '../classes/class-timing.util.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 
 const PAYSTACK_BASE_URL = 'https://api.paystack.co';
@@ -168,6 +169,16 @@ export class PaymentsService {
     // carry .message, so the controller's catch handles either the same
     // way; letting it propagate here avoids a redundant duplicate check.
     const classItem = await this.classesService.findClassById(classId);
+
+    // A one-off class that has already started can no longer be booked
+    // (same rule as the admin add-member route). Recurring classes stay
+    // bookable. This only guards NEW bookings: a payment started before the
+    // class begins is still confirmed by verify/webhook/sweep afterwards.
+    if (isPastOneOffClass(classItem)) {
+      throw new Error(
+        'This class has already started or ended and can no longer be booked.',
+      );
+    }
 
     if (paymentType === 'subscription' && classItem.recurrence === 'none') {
       throw new Error(

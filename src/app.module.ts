@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { PrismaModule } from './prisma/prisma.module.js';
@@ -15,10 +16,20 @@ import { UploadModule } from './upload/upload.module.js';
 import { PaymentsModule } from './payments/payments.module.js';
 import { QueuesModule } from './queues/queues.module.js';
 import { HealthModule } from './health/health.module.js';
+import { throttlingDisabled } from './common/throttle.js';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    // Rate limiting is NOT global: no guard is registered app-wide. Only
+    // routes that opt in with @UseGuards(ThrottlerGuard) are limited (login
+    // and register). These defaults apply to a route unless it overrides
+    // them with @Throttle.
+    ThrottlerModule.forRoot({
+      throttlers: [{ name: 'default', ttl: 60_000, limit: 60 }],
+      errorMessage: 'Too many attempts. Please wait a minute and try again.',
+      skipIf: () => throttlingDisabled(),
+    }),
     PrismaModule,
     CacheModule,
     // ORDER MATTERS: AuthModule before UsersModule. AuthController's

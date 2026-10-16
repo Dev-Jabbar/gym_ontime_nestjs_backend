@@ -14,6 +14,11 @@ import { CreateClassDto } from './dto/create-class.dto.js';
 import { UpdateClassDto } from './dto/update-class.dto.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
+import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard.js';
+import {
+  redactTrainerPhone,
+  redactTrainerPhones,
+} from './class-privacy.util.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 
@@ -39,10 +44,13 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 export class ClassesController {
   constructor(private readonly classesService: ClassesService) {}
 
-  // GET /api/classes — public, anyone can browse classes.
+  // GET /api/classes — public, anyone can browse classes. The trainer's
+  // phone number is only included when the caller is logged in.
   @Get()
-  getAllClasses() {
-    return this.classesService.findAllClasses();
+  @UseGuards(OptionalJwtAuthGuard)
+  async getAllClasses(@CurrentUser() user: any) {
+    const classes = await this.classesService.findAllClasses();
+    return user ? classes : redactTrainerPhones(classes);
   }
 
   // POST /api/classes — admin only.
@@ -85,10 +93,15 @@ export class ClassesController {
     return { success: true, data };
   }
 
-  // GET /api/classes/:id — public.
+  // GET /api/classes/:id — public (trainer phone only for logged-in callers).
   @Get(':id')
-  getClassById(@Param('id', ParseUUIDPipe) id: string) {
-    return this.classesService.findClassById(id);
+  @UseGuards(OptionalJwtAuthGuard)
+  async getClassById(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: any,
+  ) {
+    const found = await this.classesService.findClassById(id);
+    return user ? found : redactTrainerPhone(found);
   }
 
   // PUT /api/classes/:id — admin only.

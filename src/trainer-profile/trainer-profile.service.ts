@@ -1,6 +1,7 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { TrainerProfileRepository } from './trainer-profile.repository.js';
 import { ClassesService } from '../classes/classes.service.js';
+import { forViewer } from './trainer-privacy.util.js';
 import type {
   CreateTrainerProfileDto,
   UpdateTrainerProfileDto,
@@ -83,14 +84,15 @@ export class TrainerProfileService {
     return { message: 'Trainer profile deleted successfully' };
   }
 
-  async getAllTrainerProfiles() {
-    return this.trainerProfileRepo.findAllActive();
+  async getAllTrainerProfiles(viewerRole: string) {
+    const profiles = await this.trainerProfileRepo.findAllActive();
+    return profiles.map((p) => forViewer(p, viewerRole));
   }
 
-  async getTrainerProfileById(id: string) {
+  async getTrainerProfileById(id: string, viewerRole: string) {
     const profile = await this.trainerProfileRepo.findActiveById(id);
     if (!profile) throw new NotFoundException('Trainer profile not found');
-    return profile;
+    return forViewer(profile, viewerRole);
   }
 
   // Reuses ClassesService's transformClass shaping (via a public wrapper)

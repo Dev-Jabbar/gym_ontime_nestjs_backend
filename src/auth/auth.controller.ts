@@ -8,11 +8,18 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Response } from 'express';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { AuthService } from './auth.service.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 import { CurrentUser } from './decorators/current-user.decorator.js';
+import {
+  AUTH_COOKIE_NAME,
+  authCookieOptions,
+  clearAuthCookieOptions,
+} from '../common/cookie.js';
+import { AUTH_THROTTLE } from '../common/throttle.js';
 
 // This controller holds the AUTH-ACTION routes from your user.routes.ts
 // (register/login/logout/me). The CRUD/admin routes from that same file
@@ -30,7 +37,10 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   // POST /api/users/register — no guard, same as your public register route
+  // Rate limited per IP (see common/throttle.ts) against account spam.
   @Post('register')
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: AUTH_THROTTLE })
   async register(@Body() dto: RegisterDto) {
     // No try/catch here — if authService.register() throws
     // ConflictException, Nest's built-in exception filter turns that into
@@ -41,7 +51,10 @@ export class AuthController {
 
   // POST /api/users/login — also public; this IS the login route itself,
   // so it can't require a token yet
+  // Rate limited per IP against password guessing (see common/throttle.ts).
   @Post('login')
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: AUTH_THROTTLE })
   @HttpCode(200) // Nest defaults POST to 201; login isn't "creating" anything
   async login(
     @Body() dto: LoginDto,
@@ -51,12 +64,9 @@ export class AuthController {
 
     // Same cookie-setting approach as your Express controller:
     // HTTP-only, so client-side JS can never read the raw token.
-    res.cookie('token', token, {
-      httpOnly: true,
-      sameSite: 'lax',
-      // secure: true, // enable once served over HTTPS
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
+    // Options are environment-aware (src/common/cookie.ts): lax locally,
+    // SameSite=None + Secure in production so it works across domains.
+    res.cookie(AUTH_COOKIE_NAME, token, authCookieOptions());
 
     // Token is in the cookie only — never in the JSON body,
     // exactly like your Express version.
@@ -75,15 +85,11 @@ export class AuthController {
   // the cookie, no guard needed (calling this with no cookie is harmless).
   // clearCookie options must match the options the cookie was SET with
   // (httpOnly/sameSite/secure) or the browser won't actually clear it —
-  // kept identical to login()'s res.cookie(...) call above on purpose.
+  // both come from src/common/cookie.ts so they cannot drift apart.
   @Post('logout')
   @HttpCode(200)
   logout(@Res({ passthrough: true }) res: Response) {
-    res.clearCookie('token', {
-      httpOnly: true,
-      sameSite: 'lax',
-      // secure: true, // enable once served over HTTPS, same as login()
-    });
+    res.clearCookie(AUTH_COOKIE_NAME, clearAuthCookieOptions());
     return { message: 'Logged out successfully' };
   }
 }

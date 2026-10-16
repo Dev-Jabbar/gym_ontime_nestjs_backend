@@ -29,10 +29,12 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 export class TrainerProfileController {
   constructor(private readonly trainerProfileService: TrainerProfileService) {}
 
-  // GET /api/trainers — public.
+  // GET /api/trainers — logged in only (was public). Date of birth is
+  // visible to admins only; see trainer-privacy.util.ts.
   @Get()
-  getAllTrainerProfiles() {
-    return this.trainerProfileService.getAllTrainerProfiles();
+  @UseGuards(JwtAuthGuard)
+  getAllTrainerProfiles(@CurrentUser() user: any) {
+    return this.trainerProfileService.getAllTrainerProfiles(user.role);
   }
 
   // POST /api/trainers/profile — trainer only.
@@ -77,9 +79,14 @@ export class TrainerProfileController {
     return this.trainerProfileService.getMyClasses(user.id);
   }
 
-  // GET /api/trainers/:id — public. Declared LAST on purpose.
+  // GET /api/trainers/:id — logged in only (was public). Declared LAST on
+  // purpose.
   @Get(':id')
-  getTrainerProfileById(@Param('id', ParseUUIDPipe) id: string) {
-    return this.trainerProfileService.getTrainerProfileById(id);
+  @UseGuards(JwtAuthGuard)
+  getTrainerProfileById(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: any,
+  ) {
+    return this.trainerProfileService.getTrainerProfileById(id, user.role);
   }
 }
