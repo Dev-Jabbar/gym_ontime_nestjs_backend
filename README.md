@@ -1,5 +1,7 @@
 # Gym Ontime — Backend API
 
+[![CI](https://github.com/Dev-Jabbar/gym_ontime_nestjs_backend/actions/workflows/ci.yml/badge.svg)](https://github.com/Dev-Jabbar/gym_ontime_nestjs_backend/actions/workflows/ci.yml)
+
 REST API for **Gym Ontime**, a gym class booking platform. Members browse classes and pay with Paystack to get a confirmed seat; trainers manage their classes; admins manage everything.
 
 This is a full rebuild of an earlier Express + MongoDB backend onto **NestJS, Prisma and PostgreSQL**, with Redis caching and a BullMQ background job. It keeps the original `/api/...` paths and response shapes, so the existing Next.js frontend works against it unchanged.
@@ -73,19 +75,19 @@ flowchart LR
 
 ## Tech stack
 
-| Concern | Choice |
-| --- | --- |
-| Framework | NestJS 12 |
-| Language | TypeScript |
-| Database | PostgreSQL (Neon) via Prisma 7 with the `pg` driver adapter |
-| Cache | Redis via `ioredis` |
-| Queue | BullMQ via `@nestjs/bullmq` |
+| Concern    | Choice                                                                                |
+| ---------- | ------------------------------------------------------------------------------------- |
+| Framework  | NestJS 12                                                                             |
+| Language   | TypeScript                                                                            |
+| Database   | PostgreSQL (Neon) via Prisma 7 with the `pg` driver adapter                           |
+| Cache      | Redis via `ioredis`                                                                   |
+| Queue      | BullMQ via `@nestjs/bullmq`                                                           |
 | Validation | `class-validator` / `class-transformer`, global `ValidationPipe({ whitelist: true })` |
-| Auth | JWT in an HTTP-only cookie, `bcrypt` (10 rounds) |
-| Payments | Paystack (HTTP via `axios`) |
-| Uploads | Cloudinary (signed uploads) |
-| Tests | Vitest (configured; see [Testing](#testing)) |
-| Lint | oxlint |
+| Auth       | JWT in an HTTP-only cookie, `bcrypt` (10 rounds)                                      |
+| Payments   | Paystack (HTTP via `axios`)                                                           |
+| Uploads    | Cloudinary (signed uploads)                                                           |
+| Tests      | Vitest (configured; see [Testing](#testing))                                          |
+| Lint       | oxlint                                                                                |
 
 ## Data model
 
@@ -110,15 +112,15 @@ Notes: `ClassMember` has a unique `(classId, memberProfileId)` constraint so a m
 
 ## Key design decisions
 
-| Decision | Why |
-| --- | --- |
-| **`SELECT ... FOR UPDATE` inside a transaction for seat holds** | Guarantees two people can't take the last seat, without a denormalized counter that could drift. Seat correctness never depends on the cache. |
-| **One `verifyPayment` routine for all payment outcomes** | The redirect, the webhook and the sweep all call it, so every path reaches the same state. It is idempotent. |
-| **Cache-aside in repositories, fails open** | Redis is an optimisation, not a dependency. If it is down, requests are served from Postgres and errors are logged at most once every 30 seconds. |
-| **Separate Redis DBs for cache and queue** | Queue data (DB 1, prefix `gymq`) can never collide with cache keys (DB 0). |
-| **BullMQ repeatable job instead of an in-process cron** | Retries with backoff, a single worker at a time (`concurrency: 1`) and an admin endpoint to trigger a run. |
-| **Signed Cloudinary uploads** | The API only signs a request. Image bytes go straight from the browser to Cloudinary. |
-| **Response aliases (`_id`, `relatedClass`, ...)** | Kept so the existing frontend, written for MongoDB ids, works unchanged. |
+| Decision                                                        | Why                                                                                                                                               |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`SELECT ... FOR UPDATE` inside a transaction for seat holds** | Guarantees two people can't take the last seat, without a denormalized counter that could drift. Seat correctness never depends on the cache.     |
+| **One `verifyPayment` routine for all payment outcomes**        | The redirect, the webhook and the sweep all call it, so every path reaches the same state. It is idempotent.                                      |
+| **Cache-aside in repositories, fails open**                     | Redis is an optimisation, not a dependency. If it is down, requests are served from Postgres and errors are logged at most once every 30 seconds. |
+| **Separate Redis DBs for cache and queue**                      | Queue data (DB 1, prefix `gymq`) can never collide with cache keys (DB 0).                                                                        |
+| **BullMQ repeatable job instead of an in-process cron**         | Retries with backoff, a single worker at a time (`concurrency: 1`) and an admin endpoint to trigger a run.                                        |
+| **Signed Cloudinary uploads**                                   | The API only signs a request. Image bytes go straight from the browser to Cloudinary.                                                             |
+| **Response aliases (`_id`, `relatedClass`, ...)**               | Kept so the existing frontend, written for MongoDB ids, works unchanged.                                                                          |
 
 ## Getting started
 
@@ -155,73 +157,73 @@ npm run seed:admin
 
 ### Scripts
 
-| Command | Purpose |
-| --- | --- |
-| `npm run start:dev` | Run with file watching |
-| `npm run build` | Compile to `dist/` |
-| `npm run start:prod` | Run the compiled build |
+| Command              | Purpose                            |
+| -------------------- | ---------------------------------- |
+| `npm run start:dev`  | Run with file watching             |
+| `npm run build`      | Compile to `dist/`                 |
+| `npm run start:prod` | Run the compiled build             |
 | `npm run seed:admin` | Create or ensure the admin account |
-| `npm run lint` | Lint with oxlint |
-| `npm test` | Unit tests (Vitest) |
-| `npm run test:e2e` | End-to-end tests (Vitest) |
+| `npm run lint`       | Lint with oxlint                   |
+| `npm test`           | Unit tests (Vitest)                |
+| `npm run test:e2e`   | End-to-end tests (Vitest)          |
 
 ## Configuration
 
 Copy [`.env.example`](.env.example) to `.env`.
 
-| Variable | Required | Default | Description |
-| --- | --- | --- | --- |
-| `DATABASE_URL` | Yes | | PostgreSQL connection string (use the pooled Neon URL) |
-| `JWT_SECRET` | Yes | | Secret for signing session tokens; use a long random value |
-| `FRONTEND_URL` | Yes | | Frontend origin; Paystack redirects to `${FRONTEND_URL}/payment-success` |
-| `PAYSTACK_SECRET_KEY` | Yes | | Paystack secret key (`sk_test_...` in development) |
-| `CLOUDINARY_CLOUD_NAME` | Yes | | Cloudinary cloud name |
-| `CLOUDINARY_API_KEY` | Yes | | Cloudinary API key |
-| `CLOUDINARY_API_SECRET` | Yes | | Cloudinary API secret |
-| `REDIS_URL` | No | | Enables the cache and the queue. Use `rediss://` for TLS |
-| `QUEUE_REDIS_DB` | No | `1` | Redis DB used by the queue |
-| `MAINTENANCE_INTERVAL_MINUTES` | No | `15` | How often the sweep runs |
-| `PAYMENT_STALE_MINUTES` | No | `30` | Age at which a pending payment is re-verified |
-| `SUBSCRIPTION_EXPIRY_INTERVAL_MINUTES` | No | `60` | How often the subscription-expiry job runs |
-| `PORT` | No | `3001` | HTTP port |
-| `NODE_ENV` | No | | `production` makes the admin seed require `ADMIN_PASSWORD` |
-| `ADMIN_EMAIL`, `ADMIN_NAME`, `ADMIN_AVATAR`, `ADMIN_PASSWORD` | No | see seed | Admin seed settings; `ADMIN_PASSWORD` is **required** when `NODE_ENV=production` |
+| Variable                                                      | Required | Default  | Description                                                                      |
+| ------------------------------------------------------------- | -------- | -------- | -------------------------------------------------------------------------------- |
+| `DATABASE_URL`                                                | Yes      |          | PostgreSQL connection string (use the pooled Neon URL)                           |
+| `JWT_SECRET`                                                  | Yes      |          | Secret for signing session tokens; use a long random value                       |
+| `FRONTEND_URL`                                                | Yes      |          | Frontend origin; Paystack redirects to `${FRONTEND_URL}/payment-success`         |
+| `PAYSTACK_SECRET_KEY`                                         | Yes      |          | Paystack secret key (`sk_test_...` in development)                               |
+| `CLOUDINARY_CLOUD_NAME`                                       | Yes      |          | Cloudinary cloud name                                                            |
+| `CLOUDINARY_API_KEY`                                          | Yes      |          | Cloudinary API key                                                               |
+| `CLOUDINARY_API_SECRET`                                       | Yes      |          | Cloudinary API secret                                                            |
+| `REDIS_URL`                                                   | No       |          | Enables the cache and the queue. Use `rediss://` for TLS                         |
+| `QUEUE_REDIS_DB`                                              | No       | `1`      | Redis DB used by the queue                                                       |
+| `MAINTENANCE_INTERVAL_MINUTES`                                | No       | `15`     | How often the sweep runs                                                         |
+| `PAYMENT_STALE_MINUTES`                                       | No       | `30`     | Age at which a pending payment is re-verified                                    |
+| `SUBSCRIPTION_EXPIRY_INTERVAL_MINUTES`                        | No       | `60`     | How often the subscription-expiry job runs                                       |
+| `PORT`                                                        | No       | `3001`   | HTTP port                                                                        |
+| `NODE_ENV`                                                    | No       |          | `production` makes the admin seed require `ADMIN_PASSWORD`                       |
+| `ADMIN_EMAIL`, `ADMIN_NAME`, `ADMIN_AVATAR`, `ADMIN_PASSWORD` | No       | see seed | Admin seed settings; `ADMIN_PASSWORD` is **required** when `NODE_ENV=production` |
 
 ## API reference
 
 Base URL: `/api`. Authentication uses the session cookie set at login. Payments endpoints respond with `{ success, message, data }`.
 
-**Access:** *Public* = no login. *Auth* = any logged-in user. Otherwise the role(s) allowed.
+**Access:** _Public_ = no login. _Auth_ = any logged-in user. Otherwise the role(s) allowed.
 
-| Area | Method and path | Access |
-| --- | --- | --- |
-| **Auth** (mounted under `/users`) | `POST /users/register` | Public |
-| | `POST /users/login` | Public |
-| | `GET /users/me` | Auth |
-| | `POST /users/logout` | Public |
-| **Users** | `GET /users` | admin |
-| | `GET /users/:id`, `PUT /users/:id` | admin or the user themselves |
-| | `DELETE /users/:id` (soft delete) | admin |
-| | `POST /users/:id/upgrade-to-trainer` | admin |
-| **Classes** | `GET /classes`, `GET /classes/:id`, `GET /classes/:id/member-count` | Public |
-| | `POST /classes`, `PUT /classes/:id`, `DELETE /classes/:id` | admin |
-| | `GET /classes/:id/members` | trainer, admin |
-| | `GET /classes/by-member/:memberProfileId` | admin |
-| | `POST` / `DELETE /classes/:id/members/:userId` | admin |
-| | `PUT /classes/:id/trainer/:userId` | admin |
-| **Members** | `POST /members/profile`, `GET` / `PUT` / `DELETE /members/me` | member |
-| | `GET /members` | admin |
-| | `GET /members/:id` | admin, trainer, or the member themselves |
-| **Trainers** | `POST /trainers/profile`, `GET` / `PUT` / `DELETE /trainers/me` | trainer |
-| | `GET /trainers/my-classes` | trainer |
-| | `GET /trainers`, `GET /trainers/:id` | Public |
-| **Admin profile** | `GET /admins/me`, `PUT /admins/me` | admin |
-| **Payments** | `POST /payments/initiate`, `GET /payments/verify`, `GET /payments/my-payments` | member |
-| | `GET /payments`, `GET /payments/:id`, `GET /payments/class/:classId` | admin |
-| | `POST /payments/webhook` | Public (verified by HMAC signature) |
-| **Notifications** | `GET /notifications/my-notifications`, `PUT /notifications/:id/read`, `PUT /notifications/mark-all-read` | Auth |
-| **Uploads** | `POST /uploads/signature` | Auth |
-| **Maintenance** | `POST /maintenance/run` (queue a payment sweep now), `POST /maintenance/expire-subscriptions` (run subscription expiry now), `POST /maintenance/class-reminders` (send class reminders now) | admin |
+| Area                              | Method and path                                                                                                                                                                             | Access                                   |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| **Auth** (mounted under `/users`) | `POST /users/register`                                                                                                                                                                      | Public                                   |
+|                                   | `POST /users/login`                                                                                                                                                                         | Public                                   |
+|                                   | `GET /users/me`                                                                                                                                                                             | Auth                                     |
+|                                   | `POST /users/logout`                                                                                                                                                                        | Public                                   |
+| **Users**                         | `GET /users`                                                                                                                                                                                | admin                                    |
+|                                   | `GET /users/:id`, `PUT /users/:id`                                                                                                                                                          | admin or the user themselves             |
+|                                   | `DELETE /users/:id` (soft delete)                                                                                                                                                           | admin                                    |
+|                                   | `POST /users/:id/upgrade-to-trainer`                                                                                                                                                        | admin                                    |
+| **Classes**                       | `GET /classes`, `GET /classes/:id`, `GET /classes/:id/member-count`                                                                                                                         | Public                                   |
+|                                   | `POST /classes`, `PUT /classes/:id`, `DELETE /classes/:id`                                                                                                                                  | admin                                    |
+|                                   | `GET /classes/:id/members`                                                                                                                                                                  | trainer, admin                           |
+|                                   | `GET /classes/by-member/:memberProfileId`                                                                                                                                                   | admin                                    |
+|                                   | `POST` / `DELETE /classes/:id/members/:userId`                                                                                                                                              | admin                                    |
+|                                   | `PUT /classes/:id/trainer/:userId`                                                                                                                                                          | admin                                    |
+| **Members**                       | `POST /members/profile`, `GET` / `PUT` / `DELETE /members/me`                                                                                                                               | member                                   |
+|                                   | `GET /members`                                                                                                                                                                              | admin                                    |
+|                                   | `GET /members/:id`                                                                                                                                                                          | admin, trainer, or the member themselves |
+| **Trainers**                      | `POST /trainers/profile`, `GET` / `PUT` / `DELETE /trainers/me`                                                                                                                             | trainer                                  |
+|                                   | `GET /trainers/my-classes`                                                                                                                                                                  | trainer                                  |
+|                                   | `GET /trainers`, `GET /trainers/:id`                                                                                                                                                        | Public                                   |
+| **Admin profile**                 | `GET /admins/me`, `PUT /admins/me`                                                                                                                                                          | admin                                    |
+| **Payments**                      | `POST /payments/initiate`, `GET /payments/verify`, `GET /payments/my-payments`                                                                                                              | member                                   |
+|                                   | `GET /payments`, `GET /payments/:id`, `GET /payments/class/:classId`                                                                                                                        | admin                                    |
+|                                   | `POST /payments/webhook`                                                                                                                                                                    | Public (verified by HMAC signature)      |
+| **Notifications**                 | `GET /notifications/my-notifications`, `PUT /notifications/:id/read`, `PUT /notifications/mark-all-read`                                                                                    | Auth                                     |
+| **Uploads**                       | `POST /uploads/signature`                                                                                                                                                                   | Auth                                     |
+| **Maintenance**                   | `POST /maintenance/run` (queue a payment sweep now), `POST /maintenance/expire-subscriptions` (run subscription expiry now), `POST /maintenance/class-reminders` (send class reminders now) | admin                                    |
 
 A Postman collection is used for manual testing. OpenAPI/Swagger documentation is on the [roadmap](#roadmap).
 
@@ -348,15 +350,15 @@ To report a vulnerability, please open a private security advisory on GitHub ins
 
 ## Troubleshooting
 
-| Symptom | Cause and fix |
-| --- | --- |
-| `Can't reach database server` / `P1001` | Neon free tier is cold-starting or briefly unreachable. Retry. |
-| `P1000` authentication error | Wrong database password in `DATABASE_URL`; copy the full connection string again. |
-| `P2028` transaction errors after many restarts | A stale Node process holds connections. Kill it and restart. |
-| New route returns 404 | A stale `start:dev` process. Restart it. `.env` changes also need a restart. |
-| `Redis error (serving from Postgres)` warnings | Redis is down. Expected and harmless; the API keeps working. |
-| `Request failed with status code 401` on `initiate` | Wrong `PAYSTACK_SECRET_KEY`. The seat hold is released automatically. |
-| `npm install` peer-dependency errors | Use `npm install --legacy-peer-deps`. |
+| Symptom                                             | Cause and fix                                                                     |
+| --------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `Can't reach database server` / `P1001`             | Neon free tier is cold-starting or briefly unreachable. Retry.                    |
+| `P1000` authentication error                        | Wrong database password in `DATABASE_URL`; copy the full connection string again. |
+| `P2028` transaction errors after many restarts      | A stale Node process holds connections. Kill it and restart.                      |
+| New route returns 404                               | A stale `start:dev` process. Restart it. `.env` changes also need a restart.      |
+| `Redis error (serving from Postgres)` warnings      | Redis is down. Expected and harmless; the API keeps working.                      |
+| `Request failed with status code 401` on `initiate` | Wrong `PAYSTACK_SECRET_KEY`. The seat hold is released automatically.             |
+| `npm install` peer-dependency errors                | Use `npm install --legacy-peer-deps`.                                             |
 
 ## Known limitations
 
