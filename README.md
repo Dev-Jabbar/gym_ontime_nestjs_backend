@@ -4,12 +4,31 @@
 
 REST and WebSocket API for **Gym Ontime**, a gym class booking platform. Members browse classes and pay with Paystack to get a confirmed seat; trainers manage their classes; admins manage everything.
 
-This is a full rebuild of an earlier Express + MongoDB backend onto **NestJS, Prisma and PostgreSQL**, adding Redis caching, BullMQ background jobs, live seat counts over WebSockets, Firebase push notifications, OpenTelemetry tracing, Docker and CI. It keeps the original `/api/...` paths and response shapes, so the existing Next.js frontend works against it unchanged (the frontend has a switch to pick either backend).
+This is a full rebuild of an earlier Express + MongoDB backend onto **NestJS, Prisma and PostgreSQL**, adding Redis caching, BullMQ background jobs, live seat counts over WebSockets, Firebase push notifications, OpenTelemetry tracing, Docker and CI. It keeps the original `/api/...` paths, so the same Next.js frontend works against either backend (the frontend has a switch to pick Express + MongoDB or NestJS + PostgreSQL, and reads ids as `_id ?? id` so both response shapes work).
 
-> **Project status:** feature-complete and live-tested against a real Postgres (Neon) database. The Docker image builds and runs, and CI is green. The NestJS API is **not deployed to a public host yet**; see [Deployment](#deployment) and the [Roadmap](#roadmap).
+> **Project status:** feature-complete, **deployed and live**. The API runs on Render next to a Neon Postgres database, the frontend runs on Vercel, and payments work end to end in Paystack test mode. See [Live demo](#live-demo) and [Deployment](#deployment).
+
+## Live demo
+
+| What | URL |
+| ---- | --- |
+| Frontend (Next.js on Vercel) | https://gym-ontime.vercel.app |
+| API health check | https://gym-ontime-nest.onrender.com/api/health |
+| Frontend source | https://github.com/Dev-Jabbar/Gym_Ontime |
+
+How to try it:
+
+1. **The API sleeps when idle.** It runs on Render's free tier, which spins a service down after about 15 minutes without traffic. The first request can take up to a minute. Open the health URL first to wake it; it should answer `"status":"ok"`.
+2. Open the frontend and, in the picker, choose **NestJS** (this API) or **Express** (the original MongoDB backend). The same screens work on both.
+3. Register a new member account, pick a class and click **Book Now**.
+4. Payments run in **Paystack test mode**, so no real money moves. Use the test card `4084 084 084 084 08`, any future expiry, CVV `408`, PIN `1234`, OTP `123456`.
+5. After paying you return to the site, the class shows **Booked**, you get a "You're All Set!" notification, and anyone viewing the schedule sees the seat count change without refreshing.
+
+Admin and trainer features need an account with that role, so they are not available to new visitors.
 
 ## Table of contents
 
+- [Live demo](#live-demo)
 - [Features](#features)
 - [Architecture](#architecture)
 - [Tech stack](#tech-stack)
@@ -145,7 +164,7 @@ Notes: `ClassMember` has a unique `(classId, memberProfileId)` constraint so a m
 | **Live counts read from Postgres, never the cache**             | The WebSocket broadcast always carries the true seat count.                                                                                       |
 | **Rate limiting only on login and register**                    | The brute-force targets are protected without throttling normal use.                                                                              |
 | **Signed Cloudinary uploads**                                   | The API only signs a request. Image bytes go straight from the browser to Cloudinary.                                                             |
-| **Response aliases (`_id`, `relatedClass`, ...)**               | Kept so the existing frontend, written for MongoDB ids, works unchanged.                                                                          |
+| **Frontend accepts both id shapes; a few response shims stay**  | The frontend reads `_id ?? id`, so Nest sends plain `id`. Only `relatedClass` / `relatedPayment` on notifications, `one-time` and numeric `amount` stay Mongo-shaped. |
 
 ## Getting started
 
@@ -382,15 +401,29 @@ curl http://localhost:3001/api/health
 
 ## Deployment
 
-The API is containerised and CI-checked, but **not yet deployed publicly**. The frontend is hosted on Vercel and can switch between this API and the original Express backend. To deploy this one:
+Live setup (since October 2026):
 
-1. Run the Docker image on a host that supports long-running Node and WebSockets (Render, Railway or Fly.io; not Vercel), in the **same region as the database** to avoid per-query latency.
-2. Provide Redis (for example Upstash) and set `REDIS_URL`.
-3. Set production values: `NODE_ENV=production`, `DATABASE_URL`, a `JWT_SECRET` of 32+ characters, `PAYSTACK_SECRET_KEY`, `FRONTEND_URL` (https), `CLOUDINARY_*` and `FIREBASE_*`. Add `CORS_ORIGINS` if more than one frontend origin is needed.
-4. Run `npx prisma migrate deploy` against the database's direct connection string on every release.
-5. Point the Paystack dashboard webhook at `POST <api-url>/api/payments/webhook`.
+| Part | Host | Notes |
+| ---- | ---- | ----- |
+| Frontend | Vercel | `https://gym-ontime.vercel.app`; `NEXT_PUBLIC_NEST_API_URL` points at this API |
+| API | Render web service, Docker, Ohio (US East), free tier | Built from the repo `Dockerfile`; health check path `/api/health` |
+| Redis | Render Key Value (Valkey), Ohio | Internal URL in `REDIS_URL`; `noeviction` policy for the queue |
+| Database | Neon PostgreSQL, us-east-2 | Same region as the API, so queries take about 3 ms instead of about 270 ms from a distant machine |
+| Payments | Paystack (test mode) | Webhook URL: `<api-url>/api/payments/webhook` |
+
+**How a release works:** push to `master`, GitHub Actions runs the type-check, build, tests and Docker build, and Render's auto-deploy rebuilds the image and swaps it in once `/api/health` passes. Migrations are a manual step because the free plan has no pre-deploy command: run `npx prisma migrate deploy` against Neon's direct (non-pooler) connection string before pushing a schema change.
+
+**Free tier behaviour:** the API sleeps after about 15 minutes idle and wakes on the next request (up to a minute). Background jobs (payment sweep, subscription expiry, class reminders) only run while it is awake. A paid instance removes the sleeping.
+
+To deploy your own copy:
+
+1. Create a Redis instance and a Docker web service from this repo in the **same region as the database**. Do not set `PORT`; the platform provides it.
+2. Set production values: `NODE_ENV=production`, `DATABASE_URL`, a `JWT_SECRET` of 32+ characters, `PAYSTACK_SECRET_KEY`, `FRONTEND_URL` (https), `REDIS_URL`, `CLOUDINARY_*` and `FIREBASE_*`. Add `CORS_ORIGINS` if more than one frontend origin is needed (it replaces the defaults).
+3. Set the health check path to `/api/health`.
+4. Run `npx prisma migrate deploy` against the database's direct connection string.
+5. Point the Paystack dashboard webhook at `<api-url>/api/payments/webhook`.
 6. Set a strong `ADMIN_PASSWORD` before seeding the admin (never the development default).
-7. Check `<api-url>/api/health`, then log in from the frontend (the production cookie is `SameSite=None; Secure`, so it needs https end to end).
+7. Check `<api-url>/api/health`, then log in from the frontend (the production cookie is `SameSite=None; Secure`, so it needs https end to end; Safari may block cross-site cookies).
 
 Before running more than one instance, replace the single-instance pieces listed under [Known limitations](#known-limitations).
 
@@ -435,20 +468,20 @@ These are documented rather than hidden:
 - `PendingSeat` holds are not cleaned up when a member profile is deleted (they expire on their own).
 - Class reminders use a fixed Africa/Lagos offset (UTC+1) and treat `monthly` recurrence as daily.
 - Bulk replacement of a class's `members` through `PUT /classes/:id` (an Express feature) is not ported.
+- The free Render instance sleeps when idle, so the first request after a quiet period is slow.
 - No OpenAPI/Swagger documentation yet.
 
 ## Roadmap
 
-Done: NestJS + Prisma + Postgres rebuild, Redis caching, BullMQ jobs, WebSocket live counts, Firebase push and reminders, OpenTelemetry tracing, production hardening, unit tests, Docker, CI.
+Done: NestJS + Prisma + Postgres rebuild, Redis caching, BullMQ jobs, WebSocket live counts, Firebase push and reminders, OpenTelemetry tracing, production hardening, unit tests, Docker, CI, and a live deployment (Render + Neon + Vercel) with Paystack test payments and Render auto-deploy from `master`.
 
 Next:
 
-1. Deploy the API (Render, Railway or Fly.io) with hosted Redis, and point the frontend and the Paystack webhook at it
-2. Continuous deployment from `master`
-3. Kubernetes manifests (probes on `/api/health`)
-4. More automated tests: payments, seat holds, maintenance jobs, an end-to-end booking flow
-5. OpenAPI / Swagger documentation
-6. Multi-instance support (socket.io Redis adapter, shared rate-limit store, reminder lock)
+1. Kubernetes manifests (probes on `/api/health`, single replica)
+2. Deploy only when CI is green
+3. More automated tests: payments, seat holds, maintenance jobs, an end-to-end booking flow
+4. OpenAPI / Swagger documentation
+5. Multi-instance support (socket.io Redis adapter, shared rate-limit store, reminder lock)
 
 ## License
 
