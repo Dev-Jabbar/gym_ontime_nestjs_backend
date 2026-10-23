@@ -84,33 +84,16 @@ export class PaymentsService {
     private readonly notificationsService: NotificationsService,
   ) {}
 
-  // Shapes a raw Prisma Payment row for the API response: adds an `_id`
-  // alias of `id` on the payment itself AND on any populated `user`/
-  // `class` sub-object, and maps the DB's `one_time` enum value back to
-  // the wire format's `one-time`.
-  //
-  // The nested aliasing specifically is NOT a cosmetic nicety — a full
-  // sweep of the real frontend found `useBookedClasses.ts` reads
-  // `payment.class._id` directly to build the set of class IDs a
-  // member has already paid for, which drives the "Book Now" vs
-  // "Booked" state on the schedule page. Missing that alias wouldn't
-  // throw or warn anywhere; every already-booked class would just
-  // silently show "Book Now" again, because the built Set would fill
-  // with `undefined` instead of real class IDs. (An earlier, narrower
-  // check of only the payments/subscriptions feature folders had
-  // concluded nested `_id` was never read — that conclusion was wrong;
-  // this hook lives in features/schedule and was missed until a full
-  // codebase grep for `._id` usage caught it.)
+  // Shapes a raw Prisma Payment row for the API response: converts the
+  // `Decimal` amount to a number and maps the DB's `one_time` enum value
+  // back to the wire format's `one-time`. Ids are sent as `id` (also on the
+  // nested `user` / `class`); the frontend reads `_id ?? id`, so it works
+  // with this API and with the Express one.
   private toApiShape(payment: any) {
     return {
       ...payment,
-      _id: payment.id,
       amount: Number(payment.amount),
       paymentType: toApiPaymentType(payment.paymentType),
-      ...(payment.user && { user: { ...payment.user, _id: payment.user.id } }),
-      ...(payment.class && {
-        class: { ...payment.class, _id: payment.class.id },
-      }),
     };
   }
 

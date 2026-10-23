@@ -12,15 +12,13 @@ export class NotificationsService {
     private readonly push: PushService,
   ) {}
 
-  // The frontend (useNotifications / NotificationBell) was written against
-  // Mongoose shapes: it keys and matches on `_id` and reads `relatedClass` /
-  // `relatedPayment`. Prisma returns `id`, `relatedClassId`, `relatedPaymentId`.
-  // Same aliasing approach as PaymentsService.toApiShape: add the old names,
-  // keep the new ones.
+  // The frontend reads `relatedClass` / `relatedPayment` (the Mongoose field
+  // names); Prisma returns `relatedClassId` / `relatedPaymentId`, so both
+  // names are sent. The id itself is sent as `id` only: the frontend reads
+  // `_id ?? id`, so it works with this API and with the Express one.
   private toApiShape(n: Notification) {
     return {
       ...n,
-      _id: n.id,
       relatedClass: n.relatedClassId ?? undefined,
       relatedPayment: n.relatedPaymentId ?? undefined,
     };
