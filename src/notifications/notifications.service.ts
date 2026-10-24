@@ -92,6 +92,28 @@ export class NotificationsService {
     });
   }
 
+  /**
+   * Sends the same notification to every active admin (in-app + push).
+   * Like notify(), it never throws: an admin alert failing must not break
+   * the payment flow that triggered it.
+   */
+  async notifyAdmins(params: {
+    type: NotificationType;
+    title: string;
+    message: string;
+    classId?: string;
+    paymentId?: string;
+  }) {
+    try {
+      const adminIds = await this.notificationsRepo.findActiveAdminIds();
+      await Promise.all(
+        adminIds.map((userId) => this.notify({ ...params, userId })),
+      );
+    } catch (err) {
+      console.error('Failed to notify admins:', err);
+    }
+  }
+
   async registerDeviceToken(
     userId: string,
     token: string,

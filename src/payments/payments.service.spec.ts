@@ -72,7 +72,10 @@ function build() {
     getClassEnrollmentStatus: vi.fn(),
     findClassName: vi.fn(async () => "Boxing"),
   };
-  const notifications = { notify: vi.fn(async () => {}) };
+  const notifications = {
+    notify: vi.fn(async () => {}),
+    notifyAdmins: vi.fn(async () => {}),
+  };
 
   const svc = new PaymentsService(
     repo as unknown as PaymentsRepository,
@@ -283,8 +286,47 @@ describe("PaymentsService.verifyPayment", () => {
       expect(t.notifications.notify).toHaveBeenCalledWith(
         expect.objectContaining({ type: "payment_needs_review" }),
       );
+      // The admins are alerted too, with who paid and for which class.
+      expect(t.notifications.notifyAdmins).toHaveBeenCalledTimes(1);
+      expect(t.notifications.notifyAdmins).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "payment_needs_review",
+          classId: "class-1",
+          paymentId: "pay-1",
+          message: expect.stringContaining("Ada"),
+        }),
+      );
+      expect(t.notifications.notifyAdmins).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: expect.stringContaining("Boxing"),
+        }),
+      );
     },
   );
+
+  it("still answers normally if alerting the admins fails", async () => {
+    const t = build();
+    paystackSuccess();
+    t.repo.findByReference.mockResolvedValue(pendingPayment());
+    t.classes.confirmSeat.mockResolvedValue(null);
+    t.classes.getClassEnrollmentStatus.mockResolvedValue("class-full");
+    t.notifications.notifyAdmins.mockRejectedValue(new Error("boom"));
+
+    const r = await t.svc.verifyPayment("ref-1");
+
+    expect(r.message).toBe("Payment received, pending manual review");
+  });
+
+  it("does not alert admins for a normal successful payment", async () => {
+    const t = build();
+    paystackSuccess();
+    t.repo.findByReference.mockResolvedValue(pendingPayment());
+    t.classes.confirmSeat.mockResolvedValue({ id: "m1" });
+
+    await t.svc.verifyPayment("ref-1");
+
+    expect(t.notifications.notifyAdmins).not.toHaveBeenCalled();
+  });
 
   it("throws on an unexpected seat result and does not complete the payment", async () => {
     const t = build();

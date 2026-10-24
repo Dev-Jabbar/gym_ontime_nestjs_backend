@@ -39,6 +39,15 @@ export class NotificationsRepository {
     });
   }
 
+  // Ids of everyone who should receive admin alerts: active admins only.
+  async findActiveAdminIds(): Promise<string[]> {
+    const admins = await this.prisma.user.findMany({
+      where: { role: 'admin', isActive: true, deletedAt: null },
+      select: { id: true },
+    });
+    return admins.map((a) => a.id);
+  }
+
   create(data: {
     userId: string;
     type: NotificationType;

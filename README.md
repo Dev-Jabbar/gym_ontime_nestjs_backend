@@ -1,6 +1,7 @@
 # Gym Ontime — Backend API
 
 [![CI](https://github.com/Dev-Jabbar/gym_ontime_nestjs_backend/actions/workflows/ci.yml/badge.svg)](https://github.com/Dev-Jabbar/gym_ontime_nestjs_backend/actions/workflows/ci.yml)
+[![Integration (Postgres)](https://github.com/Dev-Jabbar/gym_ontime_nestjs_backend/actions/workflows/integration.yml/badge.svg)](https://github.com/Dev-Jabbar/gym_ontime_nestjs_backend/actions/workflows/integration.yml)
 
 REST and WebSocket API for **Gym Ontime**, a gym class booking platform. Members browse classes and pay with Paystack to get a confirmed seat; trainers manage their classes; admins manage everything.
 
@@ -64,7 +65,7 @@ Admin and trainer features need an account with that role, so they are not avail
 - Subscriptions expire automatically and free the member's seat
 - **Live seat counts**: every open browser sees capacity change without refreshing (socket.io)
 - **Push notifications** (Firebase Cloud Messaging) and class reminders an hour before a session
-- In-app notifications (payment confirmed, payment needs review, class reminders)
+- In-app notifications (payment confirmed, payment needs review, class reminders); admins are alerted too when a charged payment needs manual review
 - Signed Cloudinary uploads (the file never passes through this server)
 - Redis caching that **fails open** when Redis is unavailable
 - **OpenTelemetry tracing** to Jaeger (optional)
@@ -125,7 +126,7 @@ flowchart LR
 | Security   | `helmet`, `@nestjs/throttler`                                                         |
 | Payments   | Paystack (HTTP via `axios`)                                                           |
 | Uploads    | Cloudinary (signed uploads)                                                           |
-| Tests      | Vitest (96 unit tests)                                                                |
+| Tests      | Vitest (102 unit tests + 13 tests against a real Postgres)                            |
 | CI         | GitHub Actions                                                                        |
 | Containers | Docker, Docker Compose                                                                |
 | Lint       | oxlint                                                                                |
@@ -378,10 +379,34 @@ The traces showed where time goes: most of a slow endpoint is one network round 
 
 ## Testing and CI
 
-- `npm test` runs 96 Vitest unit tests: the payment service (verification, webhook signature checks, subscriptions, the needs-review path), seat-hold rules, the three background jobs (payment sweep, subscription expiry, class reminders), health, cookies, env validation, CORS, class timing and privacy rules. None need a database, Redis, Paystack or Firebase.
-- GitHub Actions (`.github/workflows/ci.yml`) runs on every push and pull request to `master`: `npm ci`, Prisma generate, type-check, build, tests, and a Docker image build. It uses dummy values only; no real secrets.
-- The business rules around seat holds, payments and the jobs are covered by those unit tests; the atomic seat claim itself (a row lock in SQL) and the push paths were verified manually against a live database (including Redis outages and retry paths). A full register, login, pay and enroll end-to-end test is on the [roadmap](#roadmap).
-- Convention: construct classes by hand with small fakes rather than Nest's `Test.createTestingModule` (Vitest does not emit the decorator metadata Nest DI needs).
+**Unit tests (102, no database needed).** `npm test` runs Vitest with small hand-written fakes: the payment service (verification, webhook signature checks, subscriptions, the needs-review path and the admin alert), seat-hold rules, notifications, the three background jobs (payment sweep, subscription expiry, class reminders), health, cookies, env validation, CORS, class timing and privacy rules. None need a database, Redis, Paystack or Firebase.
+
+**Real-Postgres tests (13).** `src/classes/classes.repository.integration.spec.ts` runs against an actual Postgres, because the seat claim relies on `SELECT ... FOR UPDATE`, which a fake database cannot prove. It fires many bookings at the same moment and counts the winners:
+
+- 20 simultaneous bookings on a 5-seat class give exactly 5 holds (and the same race is repeated over several rounds), so a class can never be oversold.
+- Confirmed members and active holds both count toward capacity; expired holds do not.
+- A double-click gives one hold, a repeated webhook does not enrol twice, and the database itself rejects a duplicate enrolment.
+
+These tests only run when `TEST_DATABASE_URL` is set; without it they are skipped, so plain `npm test` needs no database. They refuse to run against anything but a local database, so they cannot touch real data. To run them on your machine:
+
+```bash
+docker run -d --name gym-test-pg -e POSTGRES_USER=ci -e POSTGRES_PASSWORD=ci \
+  -e POSTGRES_DB=gym_ontime_test -p 5433:5432 postgres:16
+
+export DATABASE_URL=postgresql://ci:ci@localhost:5433/gym_ontime_test
+export TEST_DATABASE_URL=$DATABASE_URL
+npx prisma migrate deploy
+npx vitest run src/classes/classes.repository.integration.spec.ts
+```
+
+**CI (GitHub Actions)** runs two workflows on every push and pull request to `master`. Render deploys the API only after both are green.
+
+- `.github/workflows/ci.yml`: `npm ci`, Prisma generate, type-check, build, unit tests, and a Docker image build. It uses dummy values only; no real secrets.
+- `.github/workflows/integration.yml`: starts a throwaway Postgres 16, applies the migrations to the empty database, runs the real-Postgres tests above, then builds and starts the API and smoke-tests it (health, register, log in, read your own profile, and a 401 without the cookie).
+
+The push paths were verified manually against live services (including Redis outages and retry paths). A full register, log in, pay and enrol end-to-end test (which needs a Paystack stand-in) is on the [roadmap](#roadmap).
+
+Convention: construct classes by hand with small fakes rather than Nest's `Test.createTestingModule` (Vitest does not emit the decorator metadata Nest DI needs).
 
 ## Docker
 
@@ -441,7 +466,7 @@ Live setup (since October 2026):
 | Database | Neon PostgreSQL, us-east-2                            | Same region as the API, so queries take about 3 ms instead of about 270 ms from a distant machine |
 | Payments | Paystack (test mode)                                  | Webhook URL: `<api-url>/api/payments/webhook`                                                     |
 
-**How a release works:** push to `master`, GitHub Actions runs the type-check, build, tests and Docker build, and Render's auto-deploy rebuilds the image and swaps it in once `/api/health` passes. Migrations are a manual step because the free plan has no pre-deploy command: run `npx prisma migrate deploy` against Neon's direct (non-pooler) connection string before pushing a schema change.
+**How a release works:** push to `master`, GitHub Actions runs the type-check, build, unit tests, Docker build and the real-Postgres tests, and only when all of them are green does Render's auto-deploy (set to "After CI Checks Pass") rebuild the image and swap it in once `/api/health` passes. Migrations are a manual step because the free plan has no pre-deploy command: run `npx prisma migrate deploy` against Neon's direct (non-pooler) connection string before pushing a schema change.
 
 **Free tier behaviour:** the API sleeps after about 15 minutes idle and wakes on the next request (up to a minute). Background jobs (payment sweep, subscription expiry, class reminders) only run while it is awake. A paid instance removes the sleeping.
 
@@ -502,14 +527,13 @@ These are documented rather than hidden:
 
 ## Roadmap
 
-Done: NestJS + Prisma + Postgres rebuild, Redis caching, BullMQ jobs, WebSocket live counts, Firebase push and reminders, OpenTelemetry tracing, production hardening, unit tests, Docker, CI, Kubernetes manifests, and a live deployment (Render + Neon + Vercel) with Paystack test payments and Render auto-deploy from `master`.
+Done: NestJS + Prisma + Postgres rebuild, Redis caching, BullMQ jobs, WebSocket live counts, Firebase push and reminders, OpenTelemetry tracing, production hardening, unit tests, Docker, CI with real-Postgres tests, Kubernetes manifests, admin alerts for payments that need review, and a live deployment (Render + Neon + Vercel) with Paystack test payments and Render auto-deploy from `master` once CI is green.
 
 Next:
 
-1. Deploy only when CI is green
-2. An end-to-end booking test (register, login, pay, enroll) against a real database
-3. Swagger: add example responses to each route
-4. Multi-instance support (socket.io Redis adapter, shared rate-limit store, reminder lock)
+1. A full end-to-end booking test (register, login, pay, enroll) against a real database, with a Paystack stand-in
+2. Swagger: add example responses to each route
+3. Multi-instance support (socket.io Redis adapter, shared rate-limit store, reminder lock)
 
 ## License
 

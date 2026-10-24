@@ -313,6 +313,45 @@ export class PaymentsService {
     return 'error';
   }
 
+  // Admin alert for a charged payment whose seat was lost. Looks up the
+  // member's name and the class name for a useful message; every lookup is
+  // best effort, and nothing in here may throw.
+  private async alertAdminsPaymentNeedsReview(payment: {
+    id: string;
+    userId: string;
+    classId: string | null;
+    paystackReference: string | null;
+  }) {
+    try {
+      let memberName = 'A member';
+      let className = 'a class';
+      try {
+        const user = await this.usersService.findById(payment.userId);
+        if (user?.name) memberName = user.name;
+      } catch {
+        // keep the generic wording
+      }
+      try {
+        if (payment.classId) {
+          const name = await this.classesService.findClassName(payment.classId);
+          if (name) className = `"${name}"`;
+        }
+      } catch {
+        // keep the generic wording
+      }
+
+      await this.notificationsService.notifyAdmins({
+        type: 'payment_needs_review',
+        title: 'Payment Needs Review',
+        message: `${memberName} paid for ${className} but the seat could not be confirmed. Reference: ${payment.paystackReference ?? payment.id}. Please follow up (refund or re-seat).`,
+        classId: payment.classId ?? undefined,
+        paymentId: payment.id,
+      });
+    } catch (err) {
+      console.error('Failed to alert admins about a payment review:', err);
+    }
+  }
+
   // ────────────────────────────────────────────────────────────────
   // VERIFY PAYMENT
   // Direct port of verifyPayment() — the single source of truth for
@@ -401,6 +440,10 @@ export class PaymentsService {
         classId: payment.classId ?? undefined,
         paymentId: payment.id,
       });
+
+      // Tell the admins too: someone has to follow up and (usually) refund
+      // or re-seat this member. Never allowed to break the response.
+      await this.alertAdminsPaymentNeedsReview(payment);
 
       // Deliberate improvement over Express, flagged not silent:
       // Express returns the payment object it fetched BEFORE setting
