@@ -1,0 +1,121 @@
+name: Integration (Postgres)
+
+# Separate from ci.yml on purpose: ci.yml stays exactly as it is, and this
+# file adds a real Postgres database for the tests that need one.
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: integration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  postgres:
+    name: Real Postgres tests and API smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # A throwaway database that exists only while this job runs.
+    # It is NOT Neon and cannot touch your live data.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: gym_ontime_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d gym_ontime_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/gym_ontime_test
+      TEST_DATABASE_URL: postgresql://ci:ci@localhost:5432/gym_ontime_test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      # Builds the real tables from your migration files. This also proves
+      # the migrations apply cleanly to an empty database.
+      - name: Apply migrations
+        run: npx prisma migrate deploy
+
+      - name: Seat-claim tests against real Postgres
+        run: npx vitest run src/classes/classes.repository.integration.spec.ts
+
+      - name: Build
+        run: npm run build
+
+      # Start the compiled API against the real database and use it like a
+      # visitor would: health, register, log in, read own profile.
+      - name: API smoke test (register, login, me)
+        env:
+          NODE_ENV: development
+          PORT: '3001'
+          JWT_SECRET: ci-only-secret-that-is-at-least-32-characters-long
+          PAYSTACK_SECRET_KEY: ci-dummy-paystack-key
+          FRONTEND_URL: http://localhost:4000
+          THROTTLE_DISABLED: 'true'
+        run: |
+          set -euo pipefail
+          node dist/main.js > app.log 2>&1 &
+          APP_PID=$!
+
+          ready=0
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:3001/api/health > health.json; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo "API did not become healthy"; cat app.log; exit 1
+          fi
+          cat health.json; echo
+          grep -q '"database":{"status":"up"' health.json
+
+          curl -fsS -X POST http://localhost:3001/api/users/register \
+            -H 'Content-Type: application/json' \
+            -d '{"name":"CI User","email":"ci-user@example.com","password":"CiPassw0rd!"}'
+          echo
+
+          curl -fsS -c cookies.txt -X POST http://localhost:3001/api/users/login \
+            -H 'Content-Type: application/json' \
+            -d '{"email":"ci-user@example.com","password":"CiPassw0rd!"}'
+          echo
+
+          curl -fsS -b cookies.txt http://localhost:3001/api/users/me | tee me.json
+          echo
+          grep -q 'ci-user@example.com' me.json
+
+          # Without the login cookie the same route must be refused.
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3001/api/users/me)
+          [ "$code" = "401" ]
+
+          kill "$APP_PID"
+
+      - name: Show API log if something failed
+        if: failure()
+        run: cat app.log || true
