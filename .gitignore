@@ -8,3 +8,5 @@ dist/
 *.tsbuildinfo
 coverage/
 .DS_Store
+# Real Kubernetes secret (the committed one is only a template)
+k8s/secret.yaml

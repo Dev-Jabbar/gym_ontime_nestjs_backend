@@ -1,0 +1,30 @@
+# OPTIONAL. Needs an ingress controller in the cluster (for example
+# `minikube addons enable ingress`, or ingress-nginx on Docker Desktop/kind).
+# Apply with: kubectl apply -f k8s/optional/ingress.yaml
+#
+# Add this line to your hosts file, then open http://gym-ontime.local/api/health
+#   127.0.0.1  gym-ontime.local      (minikube: use `minikube ip` instead)
+#
+# With an Ingress in front, set TRUST_PROXY_HOPS to "1" in configmap.yaml.
+# WebSockets (socket.io) work through ingress-nginx without extra settings.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: gym-ontime-api
+  namespace: gym-ontime
+  labels:
+    app.kubernetes.io/name: gym-ontime-api
+    app.kubernetes.io/part-of: gym-ontime
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: gym-ontime.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: gym-ontime-api
+                port:
+                  name: http

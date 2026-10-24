@@ -47,6 +47,7 @@ Admin and trainer features need an account with that role, so they are not avail
 - [Observability (OpenTelemetry tracing)](#observability-opentelemetry-tracing)
 - [Testing and CI](#testing-and-ci)
 - [Docker](#docker)
+- [Kubernetes](#kubernetes)
 - [Deployment](#deployment)
 - [Security](#security)
 - [Troubleshooting](#troubleshooting)
@@ -401,6 +402,33 @@ curl http://localhost:3001/api/health
 - Coding on your PC instead? `docker compose up -d redis jaeger`, then `npm run start:dev`.
 - `docker build` uses `npm ci`, so `package-lock.json` must be committed and in sync with `package.json`.
 
+## Kubernetes
+
+The `k8s/` folder runs the same image on a local cluster (Docker Desktop's Kubernetes, minikube or kind). It is a demonstration of the packaging; the live site stays on Render.
+
+| File | What it is |
+| ---- | ---------- |
+| `namespace.yaml` | The `gym-ontime` namespace |
+| `configmap.yaml` | Non-secret settings (`NODE_ENV`, `FRONTEND_URL`, `REDIS_URL`, `SWAGGER_ENABLED`, ...) |
+| `deployment.yaml` | The API: one replica, `Recreate` strategy, startup/readiness probes on `/api/health`, liveness on the TCP port, resource limits, non-root security context |
+| `service.yaml` | ClusterIP Service on port 3001 |
+| `redis.yaml` | A small Redis (`noeviction`, no persistence) for the cache and the queue |
+| `templates/secret.example.yaml` | Secret **template** with placeholders only |
+| `optional/ingress.yaml`, `optional/migrate-job.yaml` | Ingress, and a one-off `prisma migrate deploy` Job |
+
+```bash
+docker build -t gym-ontime-backend:local .      # minikube: minikube image load gym-ontime-backend:local
+                                                # kind:     kind load docker-image gym-ontime-backend:local
+kubectl apply -f k8s/namespace.yaml
+kubectl -n gym-ontime create secret generic gym-ontime-secrets --from-env-file=.env.k8s
+kubectl apply -k k8s/
+kubectl -n gym-ontime get pods -w
+kubectl -n gym-ontime port-forward svc/gym-ontime-api 3001:3001
+curl http://localhost:3001/api/health           # API docs: http://localhost:3001/api/docs
+```
+
+Details, the Secret file format and troubleshooting are in [`k8s/README.md`](k8s/README.md). The API runs a single replica on purpose (see [Known limitations](#known-limitations)).
+
 ## Deployment
 
 Live setup (since October 2026):
@@ -474,15 +502,14 @@ These are documented rather than hidden:
 
 ## Roadmap
 
-Done: NestJS + Prisma + Postgres rebuild, Redis caching, BullMQ jobs, WebSocket live counts, Firebase push and reminders, OpenTelemetry tracing, production hardening, unit tests, Docker, CI, and a live deployment (Render + Neon + Vercel) with Paystack test payments and Render auto-deploy from `master`.
+Done: NestJS + Prisma + Postgres rebuild, Redis caching, BullMQ jobs, WebSocket live counts, Firebase push and reminders, OpenTelemetry tracing, production hardening, unit tests, Docker, CI, Kubernetes manifests, and a live deployment (Render + Neon + Vercel) with Paystack test payments and Render auto-deploy from `master`.
 
 Next:
 
-1. Kubernetes manifests (probes on `/api/health`, single replica)
-2. Deploy only when CI is green
-3. An end-to-end booking test (register, login, pay, enroll) against a real database
-4. Swagger: add example responses to each route
-5. Multi-instance support (socket.io Redis adapter, shared rate-limit store, reminder lock)
+1. Deploy only when CI is green
+2. An end-to-end booking test (register, login, pay, enroll) against a real database
+3. Swagger: add example responses to each route
+4. Multi-instance support (socket.io Redis adapter, shared rate-limit store, reminder lock)
 
 ## License
 

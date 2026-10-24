@@ -1,0 +1,155 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gym-ontime-api
+  namespace: gym-ontime
+  labels:
+    app.kubernetes.io/name: gym-ontime-api
+    app.kubernetes.io/part-of: gym-ontime
+spec:
+  # ONE replica on purpose. These pieces keep state inside one process:
+  #   - the socket.io gateway (live seat counts)
+  #   - the in-memory login rate limiter
+  #   - the class-reminder job (no lock, so two pods would remind twice)
+  # Do not raise this before adding @socket.io/redis-adapter, a shared
+  # throttler store and a lock for the reminder job (see README: Known
+  # limitations).
+  replicas: 1
+  # Recreate = stop the old pod before starting the new one, so two copies
+  # never run side by side during an update.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gym-ontime-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: gym-ontime-api
+        app.kubernetes.io/part-of: gym-ontime
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: api
+          # Built locally: docker build -t gym-ontime-backend:local .
+          # IfNotPresent so the cluster uses the local image instead of
+          # trying to pull it from a registry.
+          image: gym-ontime-backend:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3001
+          # Plain settings (NODE_ENV, PORT, FRONTEND_URL, REDIS_URL, ...).
+          envFrom:
+            - configMapRef:
+                name: gym-ontime-config
+          # Secrets are listed key by key, so the Secret may hold extra
+          # keys (e.g. everything from a .env file) without leaking them
+          # into the pod or overriding the ConfigMap values above.
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: gym-ontime-secrets
+                  key: DATABASE_URL
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: gym-ontime-secrets
+                  key: JWT_SECRET
+            - name: PAYSTACK_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: gym-ontime-secrets
+                  key: PAYSTACK_SECRET_KEY
+            # Optional: the app only warns when these are missing.
+            - name: CLOUDINARY_CLOUD_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: gym-ontime-secrets
+                  key: CLOUDINARY_CLOUD_NAME
+                  optional: true
+            - name: CLOUDINARY_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: gym-ontime-secrets
+                  key: CLOUDINARY_API_KEY
+                  optional: true
+            - name: CLOUDINARY_API_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: gym-ontime-secrets
+                  key: CLOUDINARY_API_SECRET
+                  optional: true
+            # Optional: push is switched off unless all three are present.
+            - name: FIREBASE_PROJECT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: gym-ontime-secrets
+                  key: FIREBASE_PROJECT_ID
+                  optional: true
+            - name: FIREBASE_CLIENT_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: gym-ontime-secrets
+                  key: FIREBASE_CLIENT_EMAIL
+                  optional: true
+            - name: FIREBASE_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: gym-ontime-secrets
+                  key: FIREBASE_PRIVATE_KEY
+                  optional: true
+
+          # GET /api/health answers 200 (ok or degraded) or 503 (database
+          # down). The three probes use it differently:
+          #
+          # startup:   gives the app up to 2 minutes to boot and reach the
+          #            database (Neon can cold-start) before the other
+          #            probes begin.
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 8
+            failureThreshold: 24
+          # readiness: while the database is down (503) the pod is taken
+          #            out of the Service, so no traffic reaches it.
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 8
+            failureThreshold: 3
+          # liveness:  only checks that the process still accepts
+          #            connections. It deliberately does NOT use
+          #            /api/health: restarting the pod cannot fix a Neon or
+          #            Redis outage, it would only cause restart loops.
+          livenessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 768Mi
+
+          # The image already runs as the non-root `node` user (uid 1000);
+          # the numeric id lets Kubernetes verify runAsNonRoot.
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault

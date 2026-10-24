@@ -1,0 +1,82 @@
+# A small Redis for local demos (cache on DB 0, BullMQ queue on DB 1).
+# No persistence on purpose: the cache and the job schedules rebuild on
+# boot. In a real cluster use a managed Redis and point REDIS_URL at it.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: gym-ontime
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/part-of: gym-ontime
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: redis
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: redis
+        app.kubernetes.io/part-of: gym-ontime
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          # noeviction: BullMQ must never lose queue keys to eviction.
+          args:
+            - redis-server
+            - --maxmemory-policy
+            - noeviction
+            - --save
+            - ""
+            - --appendonly
+            - "no"
+          ports:
+            - name: redis
+              containerPort: 6379
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 999
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: gym-ontime
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/part-of: gym-ontime
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis

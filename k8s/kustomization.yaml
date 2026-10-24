@@ -1,0 +1,12 @@
+# `kubectl apply -k k8s/` applies everything below in one go.
+# The Secret is NOT listed on purpose: it holds real values and is created
+# by hand (see k8s/README.md). The files in templates/ and optional/ are not
+# applied unless you ask for them.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - redis.yaml
+  - deployment.yaml
+  - service.yaml

@@ -1,0 +1,54 @@
+# OPTIONAL. Runs `prisma migrate deploy` once, as a separate release step
+# (the API never migrates at start-up).
+#
+# Needs the key DATABASE_URL_DIRECT in the gym-ontime-secrets Secret: use
+# Neon's DIRECT connection string (host WITHOUT "-pooler"), because
+# migrations can fail through the pooler.
+#
+#   kubectl apply -f k8s/optional/migrate-job.yaml
+#   kubectl -n gym-ontime logs job/gym-ontime-migrate
+#   kubectl -n gym-ontime delete job gym-ontime-migrate     (before the next run)
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: gym-ontime-migrate
+  namespace: gym-ontime
+  labels:
+    app.kubernetes.io/name: gym-ontime-migrate
+    app.kubernetes.io/part-of: gym-ontime
+spec:
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: gym-ontime-migrate
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: gym-ontime-backend:local
+          imagePullPolicy: IfNotPresent
+          # `args` (not `command`) keeps the image's tini entrypoint.
+          args: ["npx", "prisma", "migrate", "deploy"]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: gym-ontime-secrets
+                  key: DATABASE_URL_DIRECT
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
