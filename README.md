@@ -10,12 +10,12 @@ This is a full rebuild of an earlier Express + MongoDB backend onto **NestJS, Pr
 
 ## Live demo
 
-| What | URL |
-| ---- | --- |
-| Frontend (Next.js on Vercel) | https://gym-ontime.vercel.app |
-| API documentation (Swagger UI) | https://gym-ontime-nest.onrender.com/api/docs |
-| API health check | https://gym-ontime-nest.onrender.com/api/health |
-| Frontend source | https://github.com/Dev-Jabbar/Gym_Ontime |
+| What                           | URL                                             |
+| ------------------------------ | ----------------------------------------------- |
+| Frontend (Next.js on Vercel)   | https://gym-ontime.vercel.app                   |
+| API documentation (Swagger UI) | https://gym-ontime-nest.onrender.com/api/docs   |
+| API health check               | https://gym-ontime-nest.onrender.com/api/health |
+| Frontend source                | https://github.com/Dev-Jabbar/Gym_Ontime        |
 
 How to try it:
 
@@ -154,18 +154,18 @@ Notes: `ClassMember` has a unique `(classId, memberProfileId)` constraint so a m
 
 ## Key design decisions
 
-| Decision                                                        | Why                                                                                                                                               |
-| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`SELECT ... FOR UPDATE` inside a transaction for seat holds** | Guarantees two people can't take the last seat, without a denormalized counter that could drift. Seat correctness never depends on the cache.     |
-| **One `verifyPayment` routine for all payment outcomes**        | The redirect, the webhook and the sweep all call it, so every path reaches the same state. It is idempotent.                                      |
-| **Webhook verified over the raw body with `timingSafeEqual`**   | Paystack signs the exact bytes it sends; re-serialising parsed JSON could reject a genuine event.                                                 |
-| **Cache-aside in repositories, fails open**                     | Redis is an optimisation, not a dependency. If it is down, requests are served from Postgres and errors are logged at most once every 30 seconds. |
-| **Push and tracing fail open too**                              | Missing Firebase credentials or an unreachable Jaeger can never break a request or a payment.                                                     |
-| **Separate Redis DBs for cache and queue**                      | Queue data (DB 1, prefix `gymq`) can never collide with cache keys (DB 0).                                                                        |
-| **BullMQ repeatable jobs instead of in-process cron**           | Retries with backoff, one worker at a time (`concurrency: 1`) and admin endpoints to trigger a run.                                               |
-| **Live counts read from Postgres, never the cache**             | The WebSocket broadcast always carries the true seat count.                                                                                       |
-| **Rate limiting only on login and register**                    | The brute-force targets are protected without throttling normal use.                                                                              |
-| **Signed Cloudinary uploads**                                   | The API only signs a request. Image bytes go straight from the browser to Cloudinary.                                                             |
+| Decision                                                        | Why                                                                                                                                                                   |
+| --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`SELECT ... FOR UPDATE` inside a transaction for seat holds** | Guarantees two people can't take the last seat, without a denormalized counter that could drift. Seat correctness never depends on the cache.                         |
+| **One `verifyPayment` routine for all payment outcomes**        | The redirect, the webhook and the sweep all call it, so every path reaches the same state. It is idempotent.                                                          |
+| **Webhook verified over the raw body with `timingSafeEqual`**   | Paystack signs the exact bytes it sends; re-serialising parsed JSON could reject a genuine event.                                                                     |
+| **Cache-aside in repositories, fails open**                     | Redis is an optimisation, not a dependency. If it is down, requests are served from Postgres and errors are logged at most once every 30 seconds.                     |
+| **Push and tracing fail open too**                              | Missing Firebase credentials or an unreachable Jaeger can never break a request or a payment.                                                                         |
+| **Separate Redis DBs for cache and queue**                      | Queue data (DB 1, prefix `gymq`) can never collide with cache keys (DB 0).                                                                                            |
+| **BullMQ repeatable jobs instead of in-process cron**           | Retries with backoff, one worker at a time (`concurrency: 1`) and admin endpoints to trigger a run.                                                                   |
+| **Live counts read from Postgres, never the cache**             | The WebSocket broadcast always carries the true seat count.                                                                                                           |
+| **Rate limiting only on login and register**                    | The brute-force targets are protected without throttling normal use.                                                                                                  |
+| **Signed Cloudinary uploads**                                   | The API only signs a request. Image bytes go straight from the browser to Cloudinary.                                                                                 |
 | **Frontend accepts both id shapes; a few response shims stay**  | The frontend reads `_id ?? id`, so Nest sends plain `id`. Only `relatedClass` / `relatedPayment` on notifications, `one-time` and numeric `amount` stay Mongo-shaped. |
 
 ## Getting started
@@ -406,15 +406,15 @@ curl http://localhost:3001/api/health
 
 The `k8s/` folder runs the same image on a local cluster (Docker Desktop's Kubernetes, minikube or kind). It is a demonstration of the packaging; the live site stays on Render.
 
-| File | What it is |
-| ---- | ---------- |
-| `namespace.yaml` | The `gym-ontime` namespace |
-| `configmap.yaml` | Non-secret settings (`NODE_ENV`, `FRONTEND_URL`, `REDIS_URL`, `SWAGGER_ENABLED`, ...) |
-| `deployment.yaml` | The API: one replica, `Recreate` strategy, startup/readiness probes on `/api/health`, liveness on the TCP port, resource limits, non-root security context |
-| `service.yaml` | ClusterIP Service on port 3001 |
-| `redis.yaml` | A small Redis (`noeviction`, no persistence) for the cache and the queue |
-| `templates/secret.example.yaml` | Secret **template** with placeholders only |
-| `optional/ingress.yaml`, `optional/migrate-job.yaml` | Ingress, and a one-off `prisma migrate deploy` Job |
+| File                                                 | What it is                                                                                                                                                 |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `namespace.yaml`                                     | The `gym-ontime` namespace                                                                                                                                 |
+| `configmap.yaml`                                     | Non-secret settings (`NODE_ENV`, `FRONTEND_URL`, `REDIS_URL`, `SWAGGER_ENABLED`, ...)                                                                      |
+| `deployment.yaml`                                    | The API: one replica, `Recreate` strategy, startup/readiness probes on `/api/health`, liveness on the TCP port, resource limits, non-root security context |
+| `service.yaml`                                       | ClusterIP Service on port 3001                                                                                                                             |
+| `redis.yaml`                                         | A small Redis (`noeviction`, no persistence) for the cache and the queue                                                                                   |
+| `templates/secret.example.yaml`                      | Secret **template** with placeholders only                                                                                                                 |
+| `optional/ingress.yaml`, `optional/migrate-job.yaml` | Ingress, and a one-off `prisma migrate deploy` Job                                                                                                         |
 
 ```bash
 docker build -t gym-ontime-backend:local .      # minikube: minikube image load gym-ontime-backend:local
@@ -433,13 +433,13 @@ Details, the Secret file format and troubleshooting are in [`k8s/README.md`](k8s
 
 Live setup (since October 2026):
 
-| Part | Host | Notes |
-| ---- | ---- | ----- |
-| Frontend | Vercel | `https://gym-ontime.vercel.app`; `NEXT_PUBLIC_NEST_API_URL` points at this API |
-| API | Render web service, Docker, Ohio (US East), free tier | Built from the repo `Dockerfile`; health check path `/api/health` |
-| Redis | Render Key Value (Valkey), Ohio | Internal URL in `REDIS_URL`; `noeviction` policy for the queue |
-| Database | Neon PostgreSQL, us-east-2 | Same region as the API, so queries take about 3 ms instead of about 270 ms from a distant machine |
-| Payments | Paystack (test mode) | Webhook URL: `<api-url>/api/payments/webhook` |
+| Part     | Host                                                  | Notes                                                                                             |
+| -------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Frontend | Vercel                                                | `https://gym-ontime.vercel.app`; `NEXT_PUBLIC_NEST_API_URL` points at this API                    |
+| API      | Render web service, Docker, Ohio (US East), free tier | Built from the repo `Dockerfile`; health check path `/api/health`                                 |
+| Redis    | Render Key Value (Valkey), Ohio                       | Internal URL in `REDIS_URL`; `noeviction` policy for the queue                                    |
+| Database | Neon PostgreSQL, us-east-2                            | Same region as the API, so queries take about 3 ms instead of about 270 ms from a distant machine |
+| Payments | Paystack (test mode)                                  | Webhook URL: `<api-url>/api/payments/webhook`                                                     |
 
 **How a release works:** push to `master`, GitHub Actions runs the type-check, build, tests and Docker build, and Render's auto-deploy rebuilds the image and swaps it in once `/api/health` passes. Migrations are a manual step because the free plan has no pre-deploy command: run `npx prisma migrate deploy` against Neon's direct (non-pooler) connection string before pushing a schema change.
 
