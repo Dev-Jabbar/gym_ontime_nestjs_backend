@@ -6,6 +6,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module.js';
 import { ALLOWED_ORIGINS } from './common/cors.js';
 import { validateEnv } from './common/env.validation.js';
+import { DOCS_PATH, setupSwagger } from './common/swagger.js';
 
 // The real app start-up. main.ts loads this AFTER tracing has started (see
 // the note in main.ts), so it is imported dynamically, never statically.
@@ -37,7 +38,18 @@ async function bootstrap() {
   // no X-Powered-By ...). This API only returns JSON, so helmet's default
   // Content-Security-Policy is fine. CORP is relaxed to cross-origin so the
   // Vercel frontend can keep reading responses from another domain.
-  app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+  // The Swagger UI page needs inline scripts and styles, which helmet's
+  // default Content-Security-Policy blocks, so the docs path gets helmet
+  // without CSP. Every other path keeps the full default policy.
+  const apiHelmet = helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } });
+  const docsHelmet = helmet({
+    contentSecurityPolicy: false,
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  });
+  app.use((req: { path: string }, res: unknown, next: unknown) => {
+    const isDocs = req.path === `/${DOCS_PATH}` || req.path.startsWith(`/${DOCS_PATH}/`) || req.path === `/${DOCS_PATH}-json`;
+    (isDocs ? docsHelmet : apiHelmet)(req as never, res as never, next as never);
+  });
 
   // Equivalent of app.use(cookieParser()) in your Express server.ts —
   // without this, req.cookies is undefined and JwtAuthGuard can't read
@@ -57,6 +69,9 @@ async function bootstrap() {
   // one line makes every @Controller() path in this app get an /api
   // prefix automatically, matching Express's mounting convention exactly.
   app.setGlobalPrefix('api');
+
+  // Interactive API docs at /api/docs (see common/swagger.ts).
+  setupSwagger(app);
 
   // Equivalent of your CORS setup — credentials: true is required for the
   // browser to send/receive the httpOnly cookie cross-origin. Origins kept

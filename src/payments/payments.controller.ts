@@ -1,3 +1,4 @@
+import { ApiCookieAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   Body,
   Controller,
@@ -40,6 +41,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 // HttpException's constructor accepts a custom body as its first
 // argument, which is what makes this possible without abandoning Nest's
 // exception mechanism entirely.
+@ApiTags('Payments')
 @Controller('payments')
 export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}
@@ -50,6 +52,7 @@ export class PaymentsController {
   // kept by `rawBody: true` in main.ts), NOT JSON.stringify(req.body).
   // @Req() is used instead of a DTO @Body() so the ValidationPipe never
   // touches the payload.
+  @ApiOperation({ summary: 'Paystack webhook (called by Paystack, signed with x-paystack-signature)' })
   @Post('webhook')
   async webhook(@Req() req: RawBodyRequest<Request>) {
     const signature = req.headers['x-paystack-signature'];
@@ -88,7 +91,9 @@ export class PaymentsController {
   }
 
   // POST /api/payments/initiate — member only.
+  @ApiOperation({ summary: 'Start a checkout: hold a seat and get the Paystack URL', description: 'Allowed roles: member.' })
   @Post('initiate')
+  @ApiCookieAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('member')
   async initiate(@Body() dto: InitiatePaymentDto, @CurrentUser() user: any) {
@@ -116,7 +121,9 @@ export class PaymentsController {
   }
 
   // GET /api/payments/verify?reference=xxx — member only.
+  @ApiOperation({ summary: 'Verify a payment by reference and enroll the member', description: 'Allowed roles: member.' })
   @Get('verify')
+  @ApiCookieAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('member')
   async verify(@Query('reference') reference: string) {
@@ -138,7 +145,9 @@ export class PaymentsController {
   }
 
   // GET /api/payments/my-payments — member only.
+  @ApiOperation({ summary: 'List my payments', description: 'Allowed roles: member.' })
   @Get('my-payments')
+  @ApiCookieAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('member')
   async myPayments(@CurrentUser() user: any) {
@@ -155,7 +164,9 @@ export class PaymentsController {
 
   // GET /api/payments/class/:classId — admin only (financial data;
   // trainers should NOT see payment amounts, same note as Express).
+  @ApiOperation({ summary: 'List the payments for a class', description: 'Allowed roles: admin.' })
   @Get('class/:classId')
+  @ApiCookieAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
   async classPayments(@Param('classId', ParseUUIDPipe) classId: string) {
@@ -174,7 +185,9 @@ export class PaymentsController {
   }
 
   // GET /api/payments — admin only.
+  @ApiOperation({ summary: 'List all payments', description: 'Allowed roles: admin.' })
   @Get()
+  @ApiCookieAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
   async all() {
@@ -191,7 +204,9 @@ export class PaymentsController {
 
   // GET /api/payments/:id — admin only. Declared LAST, same ordering
   // hazard reasoning as every other module's bare :id route.
+  @ApiOperation({ summary: 'Get one payment', description: 'Allowed roles: admin.' })
   @Get(':id')
+  @ApiCookieAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
   async byId(@Param('id', ParseUUIDPipe) id: string) {

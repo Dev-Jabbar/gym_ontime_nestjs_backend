@@ -1,3 +1,4 @@
+import { ApiCookieAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Body, Controller, Delete, Get, NotFoundException, Param, ParseUUIDPipe, Post, Put, UseGuards } from '@nestjs/common';
 import { NotificationsService } from './notifications.service.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
@@ -13,12 +14,15 @@ import { RegisterDeviceTokenDto, UnregisterDeviceTokenDto } from './dto/device-t
 // member-count routes in ClassesController, not the real /me-vs-/:id
 // hazard from Step 1.5. Declared in the same order as Express anyway,
 // for readability.
+@ApiTags('Notifications')
 @Controller('notifications')
+@ApiCookieAuth()
 @UseGuards(JwtAuthGuard)
 export class NotificationsController {
   constructor(private readonly notificationsService: NotificationsService) {}
 
   // GET /api/notifications/my-notifications
+  @ApiOperation({ summary: 'List my notifications' })
   @Get('my-notifications')
   async getMyNotifications(@CurrentUser() user: any) {
     const data = await this.notificationsService.getMyNotifications(user.id);
@@ -26,6 +30,7 @@ export class NotificationsController {
   }
 
   // PUT /api/notifications/:id/read
+  @ApiOperation({ summary: 'Mark one notification as read' })
   @Put(':id/read')
   async markAsRead(
     @Param('id', ParseUUIDPipe) id: string,
@@ -37,6 +42,7 @@ export class NotificationsController {
   }
 
   // PUT /api/notifications/mark-all-read
+  @ApiOperation({ summary: 'Mark all my notifications as read' })
   @Put('mark-all-read')
   async markAllAsRead(@CurrentUser() user: any) {
     await this.notificationsService.markAllNotificationsAsRead(user.id);
@@ -44,6 +50,7 @@ export class NotificationsController {
   }
 
   // POST /api/notifications/device-token  (register this browser for push)
+  @ApiOperation({ summary: 'Register a push device token' })
   @Post('device-token')
   async registerDeviceToken(
     @Body() dto: RegisterDeviceTokenDto,
@@ -54,6 +61,7 @@ export class NotificationsController {
   }
 
   // DELETE /api/notifications/device-token  (unregister, e.g. on logout)
+  @ApiOperation({ summary: 'Remove a push device token' })
   @Delete('device-token')
   async unregisterDeviceToken(
     @Body() dto: UnregisterDeviceTokenDto,

@@ -1,3 +1,4 @@
+import { ApiCookieAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   Body,
   Controller,
@@ -40,12 +41,14 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 // kept identical to Express below anyway, for readability/parity, but
 // this is a convention choice here, not a correctness requirement — worth
 // knowing the difference rather than cargo-culting the caution forward.
+@ApiTags('Classes')
 @Controller('classes')
 export class ClassesController {
   constructor(private readonly classesService: ClassesService) {}
 
   // GET /api/classes — public, anyone can browse classes. The trainer's
   // phone number is only included when the caller is logged in.
+  @ApiOperation({ summary: 'List all classes' })
   @Get()
   @UseGuards(OptionalJwtAuthGuard)
   async getAllClasses(@CurrentUser() user: any) {
@@ -54,7 +57,9 @@ export class ClassesController {
   }
 
   // POST /api/classes — admin only.
+  @ApiOperation({ summary: 'Create a class', description: 'Allowed roles: admin.' })
   @Post()
+  @ApiCookieAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
   createClass(@Body() dto: CreateClassDto) {
@@ -63,7 +68,9 @@ export class ClassesController {
 
   // GET /api/classes/by-member/:memberProfileId — admin only. Used by the
   // admin member-details view ("classes joined").
+  @ApiOperation({ summary: 'List the classes a member is enrolled in', description: 'Allowed roles: admin.' })
   @Get('by-member/:memberProfileId')
+  @ApiCookieAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
   getClassesByMember(
@@ -74,6 +81,7 @@ export class ClassesController {
 
   // GET /api/classes/:id/member-count — public. Lets members see how
   // full a class is before attempting to book.
+  @ApiOperation({ summary: 'Get enrolled count and capacity' })
   @Get(':id/member-count')
   async getClassMemberCount(@Param('id', ParseUUIDPipe) id: string) {
     const data = await this.classesService.getClassMemberCount(id);
@@ -82,7 +90,9 @@ export class ClassesController {
 
   // GET /api/classes/:id/members — trainer (their own classes only,
   // enforced in the service) or admin (any class).
+  @ApiOperation({ summary: 'List the members of a class', description: 'Allowed roles: trainer, admin.' })
   @Get(':id/members')
+  @ApiCookieAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('trainer', 'admin')
   async getClassMembers(
@@ -94,6 +104,7 @@ export class ClassesController {
   }
 
   // GET /api/classes/:id — public (trainer phone only for logged-in callers).
+  @ApiOperation({ summary: 'Get one class' })
   @Get(':id')
   @UseGuards(OptionalJwtAuthGuard)
   async getClassById(
@@ -105,7 +116,9 @@ export class ClassesController {
   }
 
   // PUT /api/classes/:id — admin only.
+  @ApiOperation({ summary: 'Update a class', description: 'Allowed roles: admin.' })
   @Put(':id')
+  @ApiCookieAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
   updateClass(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateClassDto) {
@@ -113,7 +126,9 @@ export class ClassesController {
   }
 
   // DELETE /api/classes/:id — admin only.
+  @ApiOperation({ summary: 'Delete a class', description: 'Allowed roles: admin.' })
   @Delete(':id')
+  @ApiCookieAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
   deleteClass(@Param('id', ParseUUIDPipe) id: string) {
@@ -122,7 +137,9 @@ export class ClassesController {
 
   // POST /api/classes/:id/members/:userId — admin only. userId is a User
   // id with role "member" — resolved to its MemberProfile in the service.
+  @ApiOperation({ summary: 'Add a member to a class', description: 'Allowed roles: admin.' })
   @Post(':id/members/:userId')
+  @ApiCookieAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
   addMemberToClass(
@@ -133,7 +150,9 @@ export class ClassesController {
   }
 
   // DELETE /api/classes/:id/members/:userId — admin only.
+  @ApiOperation({ summary: 'Remove a member from a class', description: 'Allowed roles: admin.' })
   @Delete(':id/members/:userId')
+  @ApiCookieAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
   removeMemberFromClass(
@@ -145,7 +164,9 @@ export class ClassesController {
 
   // PUT /api/classes/:id/trainer/:userId — admin only. userId is a User
   // id with role "trainer" — resolved to its TrainerProfile in the service.
+  @ApiOperation({ summary: 'Assign a trainer to a class', description: 'Allowed roles: admin.' })
   @Put(':id/trainer/:userId')
+  @ApiCookieAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
   assignTrainerToClass(

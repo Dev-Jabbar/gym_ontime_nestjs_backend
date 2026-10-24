@@ -1,3 +1,4 @@
+import { ApiCookieAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   Body,
   Controller,
@@ -25,20 +26,25 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 // same as GET /:id — the real collision class from UsersController and
 // MemberProfileController. Both MUST stay declared before GET /:id, which
 // is last on purpose. Retest GET /me and GET /my-classes if reordered.
+@ApiTags('Trainers')
 @Controller('trainers')
 export class TrainerProfileController {
   constructor(private readonly trainerProfileService: TrainerProfileService) {}
 
   // GET /api/trainers — logged in only (was public). Date of birth is
   // visible to admins only; see trainer-privacy.util.ts.
+  @ApiOperation({ summary: 'List all trainer profiles' })
   @Get()
+  @ApiCookieAuth()
   @UseGuards(JwtAuthGuard)
   getAllTrainerProfiles(@CurrentUser() user: any) {
     return this.trainerProfileService.getAllTrainerProfiles(user.role);
   }
 
   // POST /api/trainers/profile — trainer only.
+  @ApiOperation({ summary: 'Create a trainer profile', description: 'Allowed roles: trainer.' })
   @Post('profile')
+  @ApiCookieAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('trainer')
   createTrainerProfile(
@@ -48,14 +54,18 @@ export class TrainerProfileController {
     return this.trainerProfileService.createTrainerProfile(user.id, dto);
   }
 
+  @ApiOperation({ summary: 'Get my trainer profile', description: 'Allowed roles: trainer.' })
   @Get('me')
+  @ApiCookieAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('trainer')
   getMyTrainerProfile(@CurrentUser() user: any) {
     return this.trainerProfileService.getMyTrainerProfile(user.id);
   }
 
+  @ApiOperation({ summary: 'Update my trainer profile', description: 'Allowed roles: trainer.' })
   @Put('me')
+  @ApiCookieAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('trainer')
   updateMyTrainerProfile(
@@ -65,14 +75,18 @@ export class TrainerProfileController {
     return this.trainerProfileService.updateMyTrainerProfile(user.id, dto);
   }
 
+  @ApiOperation({ summary: 'Delete my trainer profile', description: 'Allowed roles: trainer.' })
   @Delete('me')
+  @ApiCookieAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('trainer')
   deleteMyTrainerProfile(@CurrentUser() user: any) {
     return this.trainerProfileService.deleteMyTrainerProfile(user.id);
   }
 
+  @ApiOperation({ summary: 'List the classes I teach', description: 'Allowed roles: trainer.' })
   @Get('my-classes')
+  @ApiCookieAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('trainer')
   getMyClasses(@CurrentUser() user: any) {
@@ -81,7 +95,9 @@ export class TrainerProfileController {
 
   // GET /api/trainers/:id — logged in only (was public). Declared LAST on
   // purpose.
+  @ApiOperation({ summary: 'Get a trainer profile by id' })
   @Get(':id')
+  @ApiCookieAuth()
   @UseGuards(JwtAuthGuard)
   getTrainerProfileById(
     @Param('id', ParseUUIDPipe) id: string,

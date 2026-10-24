@@ -13,6 +13,7 @@ This is a full rebuild of an earlier Express + MongoDB backend onto **NestJS, Pr
 | What | URL |
 | ---- | --- |
 | Frontend (Next.js on Vercel) | https://gym-ontime.vercel.app |
+| API documentation (Swagger UI) | https://gym-ontime-nest.onrender.com/api/docs |
 | API health check | https://gym-ontime-nest.onrender.com/api/health |
 | Frontend source | https://github.com/Dev-Jabbar/Gym_Ontime |
 
@@ -123,7 +124,7 @@ flowchart LR
 | Security   | `helmet`, `@nestjs/throttler`                                                         |
 | Payments   | Paystack (HTTP via `axios`)                                                           |
 | Uploads    | Cloudinary (signed uploads)                                                           |
-| Tests      | Vitest (28 unit tests)                                                                |
+| Tests      | Vitest (96 unit tests)                                                                |
 | CI         | GitHub Actions                                                                        |
 | Containers | Docker, Docker Compose                                                                |
 | Lint       | oxlint                                                                                |
@@ -227,6 +228,7 @@ Copy [`.env.example`](.env.example) to `.env`. The app validates its settings at
 | `COOKIE_CROSS_SITE`                                                    | No            | auto                            | `true` / `false` overrides the cookie `SameSite`/`Secure` detection              |
 | `TRUST_PROXY_HOPS`                                                     | No            | 1 in production, else 0         | Number of proxies in front of the app (needed for per-client rate limits)        |
 | `THROTTLE_DISABLED`                                                    | No            |                                 | `true` switches login rate limiting off (testing only)                           |
+| `SWAGGER_ENABLED`                                                      | No            | `true`                          | `false` switches the `/api/docs` Swagger UI off                                  |
 | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | No            |                                 | Image uploads (warns if missing)                                                 |
 | `REDIS_URL`                                                            | No            |                                 | Enables cache and queue. Use `rediss://` for TLS                                 |
 | `QUEUE_REDIS_DB`                                                       | No            | `1`                             | Redis DB used by the queue                                                       |
@@ -278,7 +280,7 @@ Base URL: `/api`. Authentication uses the session cookie set at login. Payments 
 | **Uploads**                       | `POST /uploads/signature`                                                                                | Auth                                     |
 | **Maintenance**                   | `POST /maintenance/run`, `/expire-subscriptions`, `/class-reminders` (queue that job now)                | admin                                    |
 
-A Postman collection is used for manual testing. OpenAPI/Swagger documentation is on the [roadmap](#roadmap).
+**Interactive documentation:** every route, its request body and the role it needs are listed in Swagger UI at `/api/docs` (live: https://gym-ontime-nest.onrender.com/api/docs; raw OpenAPI JSON at `/api/docs-json`). It is generated from the controllers and DTOs, so it stays in sync with the code. To try a protected route, call `POST /api/users/login` on that page first; the server sets the HTTP-only cookie and your browser sends it on the following requests. Set `SWAGGER_ENABLED=false` to switch the page off. The page does not describe the WebSocket events (see [Live seat counts](#live-seat-counts-websocket)). A Postman collection is also used for manual testing.
 
 ## Authentication and authorization
 
@@ -375,9 +377,9 @@ The traces showed where time goes: most of a slow endpoint is one network round 
 
 ## Testing and CI
 
-- `npm test` runs 28 Vitest unit tests (health, cookie, env validation, CORS, class timing, trainer privacy and more). None need a database, Redis, Paystack or Firebase.
+- `npm test` runs 96 Vitest unit tests: the payment service (verification, webhook signature checks, subscriptions, the needs-review path), seat-hold rules, the three background jobs (payment sweep, subscription expiry, class reminders), health, cookies, env validation, CORS, class timing and privacy rules. None need a database, Redis, Paystack or Firebase.
 - GitHub Actions (`.github/workflows/ci.yml`) runs on every push and pull request to `master`: `npm ci`, Prisma generate, type-check, build, tests, and a Docker image build. It uses dummy values only; no real secrets.
-- The seat-hold, payment, queue and push paths have been verified manually against a live database (including Redis outages and retry paths). Automated tests for the payment service, seat holds and maintenance jobs are on the [roadmap](#roadmap).
+- The business rules around seat holds, payments and the jobs are covered by those unit tests; the atomic seat claim itself (a row lock in SQL) and the push paths were verified manually against a live database (including Redis outages and retry paths). A full register, login, pay and enroll end-to-end test is on the [roadmap](#roadmap).
 - Convention: construct classes by hand with small fakes rather than Nest's `Test.createTestingModule` (Vitest does not emit the decorator metadata Nest DI needs).
 
 ## Docker
@@ -469,7 +471,6 @@ These are documented rather than hidden:
 - Class reminders use a fixed Africa/Lagos offset (UTC+1) and treat `monthly` recurrence as daily.
 - Bulk replacement of a class's `members` through `PUT /classes/:id` (an Express feature) is not ported.
 - The free Render instance sleeps when idle, so the first request after a quiet period is slow.
-- No OpenAPI/Swagger documentation yet.
 
 ## Roadmap
 
@@ -479,8 +480,8 @@ Next:
 
 1. Kubernetes manifests (probes on `/api/health`, single replica)
 2. Deploy only when CI is green
-3. More automated tests: payments, seat holds, maintenance jobs, an end-to-end booking flow
-4. OpenAPI / Swagger documentation
+3. An end-to-end booking test (register, login, pay, enroll) against a real database
+4. Swagger: add example responses to each route
 5. Multi-instance support (socket.io Redis adapter, shared rate-limit store, reminder lock)
 
 ## License

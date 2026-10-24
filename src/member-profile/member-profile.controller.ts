@@ -1,3 +1,4 @@
+import { ApiCookieAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   Body,
   Controller,
@@ -31,6 +32,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 // route in this file uses POST or PUT or DELETE with a single dynamic
 // segment, so there's nothing for them to collide with regardless of
 // declaration order.
+@ApiTags('Members')
 @Controller('members')
 export class MemberProfileController {
   constructor(private readonly memberProfileService: MemberProfileService) {}
@@ -39,7 +41,9 @@ export class MemberProfileController {
   // (phone, date of birth, health notes, emergency contact), so it is no
   // longer public. The frontend only calls this from the admin Members
   // page, which already sends the login cookie.
+  @ApiOperation({ summary: 'List all member profiles', description: 'Allowed roles: admin.' })
   @Get()
+  @ApiCookieAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
   getAllMemberProfiles() {
@@ -47,7 +51,9 @@ export class MemberProfileController {
   }
 
   // POST /api/members/profile — member only.
+  @ApiOperation({ summary: 'Create my member profile', description: 'Allowed roles: member.' })
   @Post('profile')
+  @ApiCookieAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('member')
   createMemberProfile(@CurrentUser() user: any, @Body() dto: CreateMemberProfileDto) {
@@ -55,7 +61,9 @@ export class MemberProfileController {
   }
 
   // GET /api/members/me — member only. MUST stay declared before GET /:id.
+  @ApiOperation({ summary: 'Get my member profile', description: 'Allowed roles: member.' })
   @Get('me')
+  @ApiCookieAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('member')
   getMyMemberProfile(@CurrentUser() user: any) {
@@ -63,7 +71,9 @@ export class MemberProfileController {
   }
 
   // PUT /api/members/me — member only.
+  @ApiOperation({ summary: 'Update my member profile', description: 'Allowed roles: member.' })
   @Put('me')
+  @ApiCookieAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('member')
   updateMyMemberProfile(@CurrentUser() user: any, @Body() dto: UpdateMemberProfileDto) {
@@ -71,7 +81,9 @@ export class MemberProfileController {
   }
 
   // DELETE /api/members/me — member only.
+  @ApiOperation({ summary: 'Delete my member profile', description: 'Allowed roles: member.' })
   @Delete('me')
+  @ApiCookieAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('member')
   deleteMyMemberProfile(@CurrentUser() user: any) {
@@ -81,7 +93,9 @@ export class MemberProfileController {
   // GET /api/members/:id — logged-in users only: admins and trainers can
   // view any member; a member can only view their own profile (checked in
   // the service). Declared LAST, after GET /me, on purpose.
+  @ApiOperation({ summary: 'Get a member profile by id' })
   @Get(':id')
+  @ApiCookieAuth()
   @UseGuards(JwtAuthGuard)
   getMemberProfileById(
     @Param('id', ParseUUIDPipe) id: string,

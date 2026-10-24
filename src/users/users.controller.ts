@@ -1,3 +1,4 @@
+import { ApiCookieAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   Body,
   Controller,
@@ -44,12 +45,15 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 // 500 — every :id param below runs through ParseUUIDPipe, so a non-UUID
 // value (including "me", if it ever did land here) is rejected with a
 // clean 400 instead of an unhandled database error.
+@ApiTags('Users')
 @Controller('users')
+@ApiCookieAuth()
 @UseGuards(JwtAuthGuard) // every route here requires a valid cookie, same baseline as protect()
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   // GET /api/users — admin only. Equivalent of GET "/" + protect(["admin"]).
+  @ApiOperation({ summary: 'List all active users', description: 'Allowed roles: admin.' })
   @Get()
   @UseGuards(RolesGuard)
   @Roles('admin')
@@ -61,6 +65,7 @@ export class UsersController {
   // No @Roles() here: this is "admin, or it's literally your own record,"
   // not a fixed-role check — RolesGuard isn't built to express that, so
   // this mirrors the Express controller's explicit inline check instead.
+  @ApiOperation({ summary: 'Get a user by id' })
   @Get(':id')
   async getUserById(
     @Param('id', ParseUUIDPipe) id: string,
@@ -73,6 +78,7 @@ export class UsersController {
   }
 
   // PUT /api/users/:id — admin OR the same user.
+  @ApiOperation({ summary: 'Update a user' })
   @Put(':id')
   async updateUser(
     @Param('id', ParseUUIDPipe) id: string,
@@ -89,6 +95,7 @@ export class UsersController {
   }
 
   // DELETE /api/users/:id — admin only.
+  @ApiOperation({ summary: 'Delete (deactivate) a user', description: 'Allowed roles: admin.' })
   @Delete(':id')
   @UseGuards(RolesGuard)
   @Roles('admin')
@@ -98,6 +105,7 @@ export class UsersController {
   }
 
   // POST /api/users/:id/upgrade-to-trainer — admin only.
+  @ApiOperation({ summary: 'Upgrade a member to trainer', description: 'Allowed roles: admin.' })
   @Post(':id/upgrade-to-trainer')
   @UseGuards(RolesGuard)
   @Roles('admin')

@@ -1,3 +1,4 @@
+import { ApiCookieAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   Body,
   Controller,
@@ -32,12 +33,14 @@ import { AUTH_THROTTLE } from '../common/throttle.js';
 // one router, multiple concerns. This makes register/login/logout/me land
 // at /api/users/register, /api/users/login, /api/users/logout,
 // /api/users/me — matching your Express paths exactly.
+@ApiTags('Auth')
 @Controller('users')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   // POST /api/users/register — no guard, same as your public register route
   // Rate limited per IP (see common/throttle.ts) against account spam.
+  @ApiOperation({ summary: 'Register a new member account' })
   @Post('register')
   @UseGuards(ThrottlerGuard)
   @Throttle({ default: AUTH_THROTTLE })
@@ -52,6 +55,7 @@ export class AuthController {
   // POST /api/users/login — also public; this IS the login route itself,
   // so it can't require a token yet
   // Rate limited per IP against password guessing (see common/throttle.ts).
+  @ApiOperation({ summary: 'Log in (sets the token cookie)' })
   @Post('login')
   @UseGuards(ThrottlerGuard)
   @Throttle({ default: AUTH_THROTTLE })
@@ -75,7 +79,9 @@ export class AuthController {
 
   // GET /api/users/me — protected. This is the route that actually exercises
   // JwtAuthGuard end to end: no valid cookie -> 401, automatically.
+  @ApiOperation({ summary: 'Get the logged-in user' })
   @Get('me')
+  @ApiCookieAuth()
   @UseGuards(JwtAuthGuard)
   getMe(@CurrentUser() user: any) {
     return user;
@@ -86,6 +92,7 @@ export class AuthController {
   // clearCookie options must match the options the cookie was SET with
   // (httpOnly/sameSite/secure) or the browser won't actually clear it —
   // both come from src/common/cookie.ts so they cannot drift apart.
+  @ApiOperation({ summary: 'Log out (clears the cookie)' })
   @Post('logout')
   @HttpCode(200)
   logout(@Res({ passthrough: true }) res: Response) {
