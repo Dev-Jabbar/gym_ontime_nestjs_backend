@@ -72,11 +72,11 @@ jobs:
       - name: API smoke test (register, login, me)
         env:
           NODE_ENV: development
-          PORT: '3001'
+          PORT: "3001"
           JWT_SECRET: ci-only-secret-that-is-at-least-32-characters-long
           PAYSTACK_SECRET_KEY: ci-dummy-paystack-key
           FRONTEND_URL: http://localhost:4000
-          THROTTLE_DISABLED: 'true'
+          THROTTLE_DISABLED: "true"
         run: |
           set -euo pipefail
           node dist/main.js > app.log 2>&1 &
