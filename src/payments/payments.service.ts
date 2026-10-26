@@ -20,14 +20,10 @@ const SUBSCRIPTION_INTERVALS: ApiSubscriptionInterval[] = [
   'threeMonths',
 ];
 
-// Prisma's PaymentType enum uses an underscore (one_time) — Postgres
-// enum identifiers can't contain a hyphen. Every other value in this
-// module (status, provider, subscription interval) happens to already
-// match its wire-format string exactly, so this is the one field that
-// needs explicit two-way mapping between the DB and the API shape the
-// frontend actually expects (checked against real frontend code:
-// features/payments/types/index.ts's PaymentType is "one-time", with a
-// hyphen).
+// Prisma's PaymentType enum uses an underscore (`one_time`) because Postgres
+// enum identifiers cannot contain a hyphen. The API contract uses `one-time`,
+// so this is the one field that needs an explicit two-way mapping between the
+// database and the wire format. Every other enum value is identical in both.
 const toDbPaymentType = (t: ApiPaymentType) =>
   t === 'one-time' ? 'one_time' : 'subscription';
 const toApiPaymentType = (t: string): ApiPaymentType =>
@@ -84,11 +80,11 @@ export class PaymentsService {
     private readonly notificationsService: NotificationsService,
   ) {}
 
-  // Shapes a raw Prisma Payment row for the API response: converts the
-  // `Decimal` amount to a number and maps the DB's `one_time` enum value
-  // back to the wire format's `one-time`. Ids are sent as `id` (also on the
-  // nested `user` / `class`); the frontend reads `_id ?? id`, so it works
-  // with this API and with the Express one.
+  // Shapes a Prisma Payment row for the API: converts the `Decimal` amount to
+  // a number and maps the `one_time` enum value to the wire format's
+  // `one-time`. Ids are sent as `id` (also on the nested `user` and `class`);
+  // the frontend reads `_id ?? id`, so it works with this API and with the
+  // Express one.
   private toApiShape(payment: any) {
     return {
       ...payment,
@@ -97,13 +93,12 @@ export class PaymentsService {
     };
   }
 
-  // ────────────────────────────────────────────────────────────────
-  // INITIATE PAYMENT
-  // Direct port of createCheckoutSession. Same order of checks as
-  // Express, same seat-hold-before-Paystack-call sequencing, same
-  // release-the-hold-on-failure behavior at both points where Express
-  // does it (Paystack init failure, and payment-record save failure).
-  // ────────────────────────────────────────────────────────────────
+  /**
+   * Starts a checkout: validates the booking, places a 15-minute seat hold,
+   * then asks Paystack for a checkout URL. The hold is released if either the
+   * Paystack call or saving the payment record fails, so a seat is never
+   * locked for a checkout that did not start.
+   */
   async createCheckoutSession({
     userId,
     classId,
@@ -146,17 +141,15 @@ export class PaymentsService {
       await this.memberProfileService.findActiveProfileByUserId(userId);
     if (!memberProfile) throw new Error('Member profile not found');
 
-    // findClassById already throws NotFoundException('Class not found')
-    // itself if missing — same message Express's manual check produces,
-    // just via a thrown HttpException instead of a plain Error. Both
-    // carry .message, so the controller's catch handles either the same
-    // way; letting it propagate here avoids a redundant duplicate check.
+    // findClassById throws NotFoundException when the class is missing, so
+    // no separate existence check is needed here.
     const classItem = await this.classesService.findClassById(classId);
 
-    // A one-off class that has already started can no longer be booked
-    // (same rule as the admin add-member route). Recurring classes stay
-    // bookable. This only guards NEW bookings: a payment started before the
-    // class begins is still confirmed by verify/webhook/sweep afterwards.
+    // A one-off class that has already started can no longer be booked (the
+    // same rule as the admin add-member route). Recurring classes stay
+    // bookable. This only guards new bookings: a payment started before the
+    // class begins is still confirmed afterwards by verify, the webhook or
+    // the sweep.
     if (isPastOneOffClass(classItem)) {
       throw new Error(
         'This class has already started or ended and can no longer be booked.',
@@ -206,13 +199,10 @@ export class PaymentsService {
       }
     }
 
-    // Atomically claim a seat and hold it under this member's profile
-    // for SEAT_HOLD_MINUTES. May throw NotFoundException('Class not
-    // found') or ConflictException with a specific reason (already
-    // enrolled, active hold, class full) — see classes.service.ts. Left
-    // to propagate directly rather than caught-and-rethrown, since the
-    // controller's catch extracts .message the same way regardless of
-    // whether it's a plain Error or an HttpException.
+    // Atomically claims a seat and holds it for this member for
+    // SEAT_HOLD_MINUTES. Throws NotFoundException (class missing) or
+    // ConflictException with a specific reason (already enrolled, active
+    // hold, class full); both propagate to the controller unchanged.
     const memberProfileId = memberProfile.id;
     await this.classesService.reserveSeat(
       classId,
@@ -247,8 +237,8 @@ export class PaymentsService {
       );
       data = response.data;
     } catch (err) {
-      // Paystack init failed — don't leave this seat locked for 15
-      // minutes over a checkout that never actually started.
+      // Paystack initialisation failed: release the hold rather than lock the
+      // seat for 15 minutes over a checkout that never started.
       await this.classesService.releaseSeat(classId, memberProfileId);
       throw err;
     }
@@ -268,9 +258,8 @@ export class PaymentsService {
         subscriptionInterval,
       });
     } catch (err) {
-      // Paystack already has a live session, but we failed to save our
-      // own record of it — release the hold rather than lock the seat
-      // for 15 minutes with no record verifyPayment could ever find.
+      // Paystack has a live session but our payment record was not saved:
+      // release the hold, because verifyPayment could never find this payment.
       await this.classesService.releaseSeat(classId, memberProfileId);
       throw new Error(
         `Failed to save payment record. Please contact support with reference: ${data.data.reference}`,
@@ -283,10 +272,8 @@ export class PaymentsService {
     };
   }
 
-  // ────────────────────────────────────────────────────────────────
-  // CLAIM SEAT — internal only, called from verifyPayment(). Direct
-  // port of claimSeat(), same reason set.
-  // ────────────────────────────────────────────────────────────────
+  // Converts the member's hold into a confirmed seat. Internal: only
+  // verifyPayment calls it.
   async claimSeat(
     classId: string,
     memberProfileId: string,
@@ -313,9 +300,8 @@ export class PaymentsService {
     return 'error';
   }
 
-  // Admin alert for a charged payment whose seat was lost. Looks up the
-  // member's name and the class name for a useful message; every lookup is
-  // best effort, and nothing in here may throw.
+  // Alerts every active admin that a charged payment lost its seat. Looking
+  // up the member and class names is best effort; this method never throws.
   private async alertAdminsPaymentNeedsReview(payment: {
     id: string;
     userId: string;
@@ -329,7 +315,7 @@ export class PaymentsService {
         const user = await this.usersService.findById(payment.userId);
         if (user?.name) memberName = user.name;
       } catch {
-        // keep the generic wording
+        // Fall back to the generic wording.
       }
       try {
         if (payment.classId) {
@@ -337,7 +323,7 @@ export class PaymentsService {
           if (name) className = `"${name}"`;
         }
       } catch {
-        // keep the generic wording
+        // Fall back to the generic wording.
       }
 
       await this.notificationsService.notifyAdmins({
@@ -352,15 +338,13 @@ export class PaymentsService {
     }
   }
 
-  // ────────────────────────────────────────────────────────────────
-  // VERIFY PAYMENT
-  // Direct port of verifyPayment() — the single source of truth for
-  // "did this payment actually happen," called by both the webhook
-  // and the frontend's own /payment-success page. Same
-  // re-verify-against-Paystack-never-trust-the-caller behavior, same
-  // idempotency on an already-completed payment, same needsReview
-  // branch for a charged-but-seat-lost payment.
-  // ────────────────────────────────────────────────────────────────
+  /**
+   * The single source of truth for "did this payment actually happen". The
+   * member's redirect, the Paystack webhook and the background sweep all call
+   * it. It re-verifies the charge with Paystack instead of trusting the
+   * caller, and it is idempotent: an already completed payment is returned
+   * as is.
+   */
   async verifyPayment(reference: string) {
     const paystackSecretKey = process.env.PAYSTACK_SECRET_KEY as string;
 
@@ -369,12 +353,10 @@ export class PaymentsService {
       { headers: { Authorization: `Bearer ${paystackSecretKey}` } },
     );
 
-    // Paystack does not send a webhook event for a failed/declined
-    // charge — per their docs, webhooks only fire for a successful
-    // charge. This verify() call is the ONLY place in the flow that
-    // ever finds out about a failure, so it persists "failed" and
-    // releases the seat hold right away rather than leaving the record
-    // stuck at "pending" forever.
+    // Paystack only sends webhooks for successful charges, so this call is
+    // the only place a failed or declined charge is ever discovered. Persist
+    // `failed` and release the seat hold immediately rather than leaving the
+    // record `pending` forever.
     if (data.data.status !== 'success') {
       const payment = await this.paymentsRepo.findByReference(reference);
       if (payment && payment.status === 'pending') {
@@ -417,16 +399,14 @@ export class PaymentsService {
       throw new Error('Payment has no associated class');
     }
 
-    // Claim the seat before marking anything complete, so a
-    // "completed" payment can never exist without a genuinely secured
-    // seat behind it.
+    // Claim the seat before marking the payment complete, so a completed
+    // payment can never exist without a secured seat behind it.
     const seatResult = await this.claimSeat(payment.classId, memberProfile.id);
 
     if (seatResult === 'hold-expired' || seatResult === 'class-full') {
-      // Money was charged but the seat is no longer available. Flag
-      // for manual review instead of guessing whether to refund or
-      // bump someone — that's a business decision, not a code
-      // decision.
+      // The charge succeeded but the seat is gone. Flag it for manual review
+      // instead of guessing whether to refund or bump someone: that is a
+      // business decision, not a code decision.
       const updated = await this.paymentsRepo.updateByReference(reference, {
         needsReview: true,
       });
@@ -441,18 +421,12 @@ export class PaymentsService {
         paymentId: payment.id,
       });
 
-      // Tell the admins too: someone has to follow up and (usually) refund
-      // or re-seat this member. Never allowed to break the response.
+      // Admins must follow up too (usually a refund or a re-seat). A failure
+      // to alert them must never break the response.
       await this.alertAdminsPaymentNeedsReview(payment);
 
-      // Deliberate improvement over Express, flagged not silent:
-      // Express returns the payment object it fetched BEFORE setting
-      // needsReview, so its API response's needsReview field is stale
-      // (still false) even though the DB row is now true. Returning
-      // the freshly updated row here is strictly more correct and
-      // nothing in the frontend inspects this field for the
-      // needs-review case (only `message` is read), so there's no
-      // compatibility reason to keep the stale value.
+      // Return the freshly updated row so `needsReview` is accurate in the
+      // response.
       return {
         message: 'Payment received, pending manual review',
         payment: this.toApiShape(updated),
@@ -465,7 +439,7 @@ export class PaymentsService {
       );
     }
 
-    // "enrolled" or "already-enrolled" — safe to continue.
+    // Seat result is 'enrolled' or 'already-enrolled': safe to continue.
     if (payment.paymentType === 'subscription' && payment.subscriptionInterval) {
       const startDate = new Date();
       const endDate = calculateEndDate(
@@ -473,12 +447,9 @@ export class PaymentsService {
         payment.subscriptionInterval as ApiSubscriptionInterval,
       );
 
-      // Payment has no subscriptionId field to set — per the schema,
-      // the FK lives on ClassSubscription.paymentId, and
-      // Payment.subscription is a back-relation only (same direction
-      // as Mongoose's subscription.payment being the required side).
-      // Creating the row below is what establishes the link; there's
-      // nothing further to write onto the Payment record itself.
+      // The foreign key lives on ClassSubscription.paymentId; Payment has only
+      // a back-relation. Creating the subscription row below is what links
+      // the two, so nothing is written to the Payment itself.
       await this.paymentsRepo.createSubscription({
         userId: payment.userId,
         memberProfileId: memberProfile.id,
@@ -496,9 +467,9 @@ export class PaymentsService {
       { status: 'completed' },
     );
 
-    // Fetch the class name for a friendlier message — falls back to a
-    // generic one if the lookup fails, since a notification isn't
-    // worth failing the whole verification over.
+    // The class name makes the notification friendlier, but a notification
+    // is not worth failing the verification over, so fall back to generic
+    // wording if the lookup fails.
     let className: string | null = null;
     try {
       className = await this.classesService.findClassName(payment.classId);
@@ -523,10 +494,11 @@ export class PaymentsService {
     };
   }
 
-  // ────────────────────────────────────────────────────────────────
-  // PAYSTACK WEBHOOK
-  // Direct port of payment.webhook.ts's handlePaystackWebhook.
-  // ────────────────────────────────────────────────────────────────
+  /**
+   * Handles a Paystack webhook. The HMAC-SHA512 signature is checked over the
+   * exact bytes Paystack sent, then `charge.success` events are delegated to
+   * verifyPayment.
+   */
   async handlePaystackWebhook(signature: string, rawBody: Buffer | string) {
     // HMAC-SHA512 over the exact bytes Paystack sent (see main.ts rawBody).
     const expected = crypto
@@ -547,22 +519,19 @@ export class PaymentsService {
       const { reference } = event.data;
 
       const payment = await this.paymentsRepo.findByReference(reference);
-      if (!payment) return; // unknown reference, nothing to do
-      if (payment.status === 'completed') return; // already processed elsewhere
+      if (!payment) return; // Unknown reference: nothing to do.
+      if (payment.status === 'completed') return; // Already processed.
 
       try {
-        // Delegates entirely to verifyPayment() — the same function
-        // the user's own /payment-success redirect and the scheduled
-        // cleanup sweep (Step 5) both use. Single source of truth,
-        // not a second implementation that can drift out of sync.
+        // verifyPayment is shared with the redirect and the sweep, so every
+        // trigger follows the same rules and re-checks the charge with
+        // Paystack instead of trusting the webhook payload.
         await this.verifyPayment(reference);
       } catch (err) {
-        // verifyPayment throws when Paystack reports the charge
-        // failed or the re-verification request itself errors — but
-        // it already persists "failed" and releases the seat hold
-        // before throwing in the failure case, so this catch just
-        // stops an uncaught rejection from bubbling out of the
-        // webhook handler.
+        // verifyPayment throws when Paystack reports a failed charge or the
+        // re-check itself errors. In the failure case it has already
+        // persisted `failed` and released the hold, so the error is only
+        // logged and never allowed to escape the webhook handler.
         console.log(
           `Webhook verifyPayment could not complete for ${reference}:`,
           err,
@@ -571,10 +540,8 @@ export class PaymentsService {
     }
   }
 
-  // ────────────────────────────────────────────────────────────────
-  // QUEUE SUPPORT — used by the Step 5 maintenance sweep. Thin wrappers
-  // so the queue never touches the repository directly.
-  // ────────────────────────────────────────────────────────────────
+  // Thin wrappers used by the maintenance jobs, so the queue layer never
+  // touches the repository directly.
 
   // Pending payments older than `olderThanMinutes` (references only).
   async findStalePending(olderThanMinutes: number) {
@@ -599,15 +566,9 @@ export class PaymentsService {
     return this.paymentsRepo.markSubscriptionExpired(subscriptionId);
   }
 
-  // ────────────────────────────────────────────────────────────────
-  // READ ENDPOINTS — direct ports of payment.repository.ts's find*
-  // functions, using Prisma `include` in place of Mongoose `.populate`.
-  // Note: Express's findAllPayments/findPaymentById populate
-  // ("class", "name price") — but Class has no top-level `price`
-  // field (only nested pricing.*), so that populate silently returns
-  // no price in Express today. Matched here by simply not selecting
-  // any price-like field on class — same end result, not a fix.
-  // ────────────────────────────────────────────────────────────────
+  // Read endpoints. Prisma `include` replaces Mongoose `.populate`. The
+  // class is deliberately not given a price field: Class has no top-level
+  // `price` (only `pricing.*`).
 
   async getUserPayments(userId: string) {
     const payments = await this.paymentsRepo.findByUserId(userId);

@@ -13,8 +13,8 @@ import {
 } from './queue.constants.js';
 import { SWEEP_JOB_OPTIONS } from './maintenance.scheduler.js';
 
-// Admin-only manual trigger, handy for testing the abandon -> failed ->
-// hold released flow without waiting for the 15-minute schedule.
+// Admin-only manual trigger, useful for testing the abandoned-payment flow
+// (abandon, mark failed, release hold) without waiting for the schedule.
 @ApiTags('Maintenance (admin)')
 @Controller('maintenance')
 @ApiCookieAuth()
@@ -34,7 +34,7 @@ export class MaintenanceController {
     };
   }
 
-  // Same idea for the subscription-expiry job, so it can be tested
+  // Manual trigger for the subscription-expiry job, so it can be exercised
   // without waiting an hour.
   @ApiOperation({ summary: 'Expire ended subscriptions now', description: 'Allowed roles: admin.' })
   @Post('expire-subscriptions')
@@ -51,7 +51,7 @@ export class MaintenanceController {
     };
   }
 
-  // Same idea for class reminders: test without waiting for the schedule.
+  // Manual trigger for class reminders.
   @ApiOperation({ summary: 'Send class reminders now', description: 'Allowed roles: admin.' })
   @Post('class-reminders')
   async classRemindersNow() {

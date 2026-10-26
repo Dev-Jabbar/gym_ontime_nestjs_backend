@@ -3,8 +3,9 @@ import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
 
 // For routes that are public but show a little more to a logged-in user.
-// Unlike JwtAuthGuard it NEVER rejects: a missing, expired or invalid cookie
-// simply means "anonymous" (req.user stays undefined) and the request goes on.
+// Unlike JwtAuthGuard it never rejects: a missing, expired or invalid cookie
+// simply means "anonymous" (req.user stays undefined) and the request
+// continues.
 @Injectable()
 export class OptionalJwtAuthGuard implements CanActivate {
   constructor(private readonly jwtService: JwtService) {}
@@ -16,7 +17,7 @@ export class OptionalJwtAuthGuard implements CanActivate {
       try {
         (req as any).user = this.jwtService.verify(token);
       } catch {
-        // Bad token: treat as anonymous.
+        // Invalid token: treat as anonymous.
       }
     }
     return true;

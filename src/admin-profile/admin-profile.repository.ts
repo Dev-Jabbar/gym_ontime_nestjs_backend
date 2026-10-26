@@ -9,8 +9,8 @@ export class AdminProfileRepository {
     return this.prisma.adminProfile.findUnique({ where: { userId } });
   }
 
-  // Upsert: admin accounts come from a seed script, so there's no
-  // guarantee a profile row exists yet.
+  // Upsert: admin accounts come from a seed script, so a profile row may not
+  // exist yet.
   upsertByUserId(userId: string, data: { avatar?: string }) {
     return this.prisma.adminProfile.upsert({
       where: { userId },

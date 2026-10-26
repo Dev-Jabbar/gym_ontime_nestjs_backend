@@ -1,6 +1,6 @@
-// Same definition of "past class" the admin add-member and assign-trainer
-// routes already use (and Express used): a ONE-OFF class whose start time
-// has passed. A recurring class keeps having new sessions, so its original
+// Defines a "past class" as a one-off class whose start time has passed. This
+// is the rule the admin add-member and assign-trainer routes and the booking
+// flow share. A recurring class keeps having new sessions, so its original
 // start date being in the past does not mean there is nothing left to join.
 export function isPastOneOffClass(
   cls: { recurrence?: string | null; schedule: Date | string },

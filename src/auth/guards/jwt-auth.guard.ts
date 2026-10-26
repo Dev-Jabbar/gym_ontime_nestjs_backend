@@ -7,23 +7,12 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
 
-// THIS is your protect() middleware, rewritten as a Guard.
+// Authenticates a request: reads the JWT from the HTTP-only `token` cookie,
+// verifies it, attaches the decoded payload to `req.user`, and rejects with
+// 401 if the cookie is missing, invalid or expired. Role checks are done
+// separately by RolesGuard.
 //
-// Your Express version:
-//   export const protect = (roles?: Role[]) => async (req, res, next) => {
-//     const token = req.cookies.token;
-//     const payload = verifyToken(token);
-//     req.user = payload;
-//     if (roles && !roles.includes(payload.role)) return res.status(403)...
-//     next();
-//   };
-//
-// Same job here: read the cookie, verify the JWT, attach the user to the
-// request, reject if invalid. The one real difference is WHEN it runs —
-// Nest guards run as part of the request lifecycle Nest itself manages,
-// after routing decides which controller method matches, but before that
-// method's body executes. You attach it with a decorator on the controller
-// or route instead of passing it into the route definition.
+// Apply it with @UseGuards(JwtAuthGuard) on a controller or a route.
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
   constructor(private readonly jwtService: JwtService) {}
@@ -37,11 +26,10 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     try {
-      // Same verifyToken() call your Express middleware makes
+      // Verifies the signature and expiry; throws if either is invalid.
       const payload = this.jwtService.verify(token);
-      // Same as `req.user = payload` in your Express middleware —
-      // this makes it available to a later RolesGuard, and to the
-      // controller via the @CurrentUser() decorator we add next.
+      // Attach the user so RolesGuard and the @CurrentUser() decorator can
+      // read it.
       (req as any).user = payload;
       return true;
     } catch {

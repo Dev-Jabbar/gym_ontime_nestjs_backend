@@ -4,14 +4,14 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { TX_OPTIONS } from '../common/tx-options.js';
 import { CacheService } from '../cache/cache.service.js';
 
-// Data access for User. No business rules, no HTTP exceptions, no password
-// hashing — UsersService hands in already-hashed passwords.
+// Data access for User. No business rules, no HTTP exceptions and no password
+// hashing: UsersService passes in already-hashed passwords.
 //
-// A few methods here (create, restore, softDelete, upgradeToTrainer) also
-// write MemberProfile / TrainerProfile / ClassMember / Class rows. That's
+// A few methods (create, restore, softDelete, upgradeToTrainer) also write
+// MemberProfile, TrainerProfile, ClassMember and Class rows. That is
 // deliberate: those writes must commit or roll back together with the User
-// write, and a Prisma transaction can only span calls made on its own tx
-// client — it can't be stitched across other repositories.
+// write, and a Prisma transaction can only span calls made on its own
+// transaction client.
 @Injectable()
 export class UsersRepository {
   constructor(
@@ -52,7 +52,7 @@ export class UsersRepository {
     return updated;
   }
 
-  /** New user + its MemberProfile, atomically. */
+  /** Creates a user and its MemberProfile atomically. */
   createWithMemberProfile(data: {
     name: string;
     email: string;
@@ -74,8 +74,8 @@ export class UsersRepository {
   }
 
   /**
-   * Revives a soft-deleted user as a member and reactivates (or creates,
-   * if missing) their MemberProfile, atomically.
+   * Revives a soft-deleted user as a member and reactivates (or creates, if
+   * missing) their MemberProfile, atomically.
    */
   restoreAsMember(
     userId: string,
@@ -111,8 +111,8 @@ export class UsersRepository {
 
   /**
    * Soft-deletes the user and cascades: removes their class enrollments,
-   * unassigns them from classes they teach (classes are kept, just
-   * trainerless), deactivates both profiles.
+   * unassigns them from classes they teach (the classes are kept, just
+   * without a trainer) and deactivates both profiles.
    */
   async softDeleteWithCascade(id: string): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
@@ -148,13 +148,13 @@ export class UsersRepository {
         data: { isActive: false, deletedAt: new Date() },
       });
     }, TX_OPTIONS);
-    // Cascade removed enrollments and unassigned their classes.
+    // The cascade changed enrollments and trainer assignments.
     await this.cache.invalidateClasses();
   }
 
   /**
-   * Role flip to trainer + member profile deactivation + trainer profile
-   * create-or-reactivate, all-or-nothing.
+   * Flips the role to trainer, deactivates the member profile and creates or
+   * reactivates the trainer profile, all or nothing.
    */
   promoteToTrainer(id: string): Promise<User> {
     return this.prisma.$transaction(async (tx) => {

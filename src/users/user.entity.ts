@@ -1,13 +1,11 @@
-// TEMPORARY: this is standing in for your Mongoose `User` model (user.model.ts)
-// until Step 2 swaps this whole module for Prisma + PostgreSQL.
-// The shape deliberately mirrors your existing IUser interface.
+// Domain types for User. `Role` is shared by the auth guards and decorators.
 export type Role = 'member' | 'trainer' | 'admin';
 
 export interface User {
   id: string;
   name: string;
   email: string;
-  password: string; // stored hashed, same as your Mongoose model
+  password: string; // Stored as a bcrypt hash.
   role: Role;
   isActive: boolean;
   deletedAt: Date | null;

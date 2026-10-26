@@ -20,19 +20,18 @@ import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 
-// Mounted at /api/trainers (matches Express's app.use("/api/trainers", ...)).
+// Mounted at /api/trainers.
 //
-// ORDERING: GET /me and GET /my-classes are single-segment GET routes,
-// same as GET /:id — the real collision class from UsersController and
-// MemberProfileController. Both MUST stay declared before GET /:id, which
-// is last on purpose. Retest GET /me and GET /my-classes if reordered.
+// Route order matters: GET /me and GET /my-classes are single-segment GET
+// routes like GET /:id, so both must be declared before it. GET /:id is last
+// on purpose; retest /me and /my-classes if the order changes.
 @ApiTags('Trainers')
 @Controller('trainers')
 export class TrainerProfileController {
   constructor(private readonly trainerProfileService: TrainerProfileService) {}
 
-  // GET /api/trainers — logged in only (was public). Date of birth is
-  // visible to admins only; see trainer-privacy.util.ts.
+  // GET /api/trainers: logged in only. Date of birth is visible to admins
+  // only (see trainer-privacy.util.ts).
   @ApiOperation({ summary: 'List all trainer profiles' })
   @Get()
   @ApiCookieAuth()
@@ -41,7 +40,7 @@ export class TrainerProfileController {
     return this.trainerProfileService.getAllTrainerProfiles(user.role);
   }
 
-  // POST /api/trainers/profile — trainer only.
+  // POST /api/trainers/profile: trainer only.
   @ApiOperation({ summary: 'Create a trainer profile', description: 'Allowed roles: trainer.' })
   @Post('profile')
   @ApiCookieAuth()
@@ -93,8 +92,7 @@ export class TrainerProfileController {
     return this.trainerProfileService.getMyClasses(user.id);
   }
 
-  // GET /api/trainers/:id — logged in only (was public). Declared LAST on
-  // purpose.
+  // GET /api/trainers/:id: logged in only. Declared last on purpose.
   @ApiOperation({ summary: 'Get a trainer profile by id' })
   @Get(':id')
   @ApiCookieAuth()

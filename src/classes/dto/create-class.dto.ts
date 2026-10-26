@@ -25,10 +25,10 @@ const DAY_VALUES = [
   'sunday',
 ] as const;
 
-// Equivalent of createClassSchema's nested `pricing` object (Zod). Needs
-// @ValidateNested + @Type here — without @Type, class-validator has no way
-// to know this plain object should become a PricingDto instance before
-// running ITS OWN decorators, so nested validation would silently no-op.
+// Nested `pricing` object. @ValidateNested alone is not enough: @Type is
+// needed so class-validator knows to turn the plain object into a PricingDto
+// before running its own decorators. Without it the nested validation would
+// silently do nothing.
 export class PricingDto {
   @IsOptional()
   @IsNumber()
@@ -51,10 +51,9 @@ export class PricingDto {
   threeMonths?: number;
 }
 
-// Equivalent of createClassSchema (Zod). `trainer` is a User id (not a
-// TrainerProfile id) — same convention as Express; ClassesService
-// resolves it to the matching TrainerProfile, same as
-// assignTrainerToClass already does.
+// Request body for creating a class. `trainer` is a User id (not a
+// TrainerProfile id); ClassesService resolves it to the matching
+// TrainerProfile.
 export class CreateClassDto {
   @IsString()
   @MinLength(1, { message: 'Name is required' })

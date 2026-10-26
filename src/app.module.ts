@@ -21,10 +21,10 @@ import { throttlingDisabled } from './common/throttle.js';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    // Rate limiting is NOT global: no guard is registered app-wide. Only
-    // routes that opt in with @UseGuards(ThrottlerGuard) are limited (login
-    // and register). These defaults apply to a route unless it overrides
-    // them with @Throttle.
+    // Rate limiting is not global: no guard is registered app-wide. Only
+    // routes that opt in with @UseGuards(ThrottlerGuard) are limited (login and
+    // register). These defaults apply unless a route overrides them with
+    // @Throttle.
     ThrottlerModule.forRoot({
       throttlers: [{ name: 'default', ttl: 60_000, limit: 60 }],
       errorMessage: 'Too many attempts. Please wait a minute and try again.',
@@ -32,14 +32,11 @@ import { throttlingDisabled } from './common/throttle.js';
     }),
     PrismaModule,
     CacheModule,
-    // ORDER MATTERS: AuthModule before UsersModule. AuthController's
-    // static route GET /api/users/me must register before UsersController's
-    // dynamic GET /api/users/:id, or a request to /api/users/me gets
-    // swallowed by :id treating "me" as an id. See the long comment at the
-    // top of users.controller.ts for the full explanation and why a
-    // path-level fix (regex-constraining :id) isn't available in this
-    // Express/path-to-regexp version. If you ever reorder these two, retest
-    // GET /api/users/me specifically.
+    // Order matters: AuthModule must come before UsersModule.
+    // AuthController's static route GET /api/users/me has to register before
+    // UsersController's dynamic GET /api/users/:id, or "me" is captured as an
+    // id. See the note at the top of users.controller.ts. If these two are
+    // reordered, retest GET /api/users/me.
     AuthModule,
     UsersModule,
     ClassesModule,
@@ -50,10 +47,10 @@ import { throttlingDisabled } from './common/throttle.js';
     UploadModule,
     PaymentsModule,
     HealthModule,
-    // Bull queue (Step 5). Needs Redis; skipped when REDIS_URL is unset.
+    // BullMQ queue. Needs Redis, so it is skipped when REDIS_URL is unset.
     // main.ts loads .env before this file is evaluated, so the check is safe.
     // QueuesModule reads REDIS_URL lazily (forRootAsync), so importing it
-    // without Redis configured no longer crashes the app.
+    // without Redis configured does not crash the app.
     ...(process.env.REDIS_URL ? [QueuesModule] : []),
   ],
   controllers: [AppController],

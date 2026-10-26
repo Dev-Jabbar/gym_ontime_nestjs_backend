@@ -3,19 +3,19 @@ import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { ClassesRepository } from './classes.repository.js';
 
-// INTEGRATION TEST: runs against a REAL Postgres, not a fake.
+// Integration test: runs against a real Postgres, not a fake.
 //
 // Why it exists: the seat claim in ClassesRepository.reserveSeat relies on
 // `SELECT ... FOR UPDATE`, which is SQL behaviour inside Postgres. A fake
-// database cannot prove it stops two people taking the last seat. These
+// database cannot prove that it stops two people taking the last seat. These
 // tests fire many bookings at the same moment and count the winners.
 //
 // It only runs when TEST_DATABASE_URL is set (CI sets it, see
 // .github/workflows/integration.yml). Without it the whole file is skipped,
-// so plain `npm test` on your PC is unaffected.
+// so a plain `npm test` needs no database.
 //
-// SAFETY: it refuses to run against anything but a local database, so it can
-// never touch your live Neon data by mistake.
+// Safety: it refuses to run against anything but a local database, so it can
+// never touch a hosted database such as Neon by mistake.
 
 const TEST_DB_URL = process.env.TEST_DATABASE_URL;
 const LOCAL_HOSTS = ['localhost', '127.0.0.1', '[::1]', '::1', 'postgres'];
@@ -63,7 +63,7 @@ describe.skipIf(!TEST_DB_URL)('ClassesRepository seat claim (real Postgres)', ()
     await prisma.$disconnect();
   }, 60_000);
 
-  // ── helpers ──────────────────────────────────────────────────────
+  // Helpers
 
   async function createMembers(count: number): Promise<string[]> {
     const ids: string[] = [];
@@ -101,7 +101,7 @@ describe.skipIf(!TEST_DB_URL)('ClassesRepository seat claim (real Postgres)', ()
     return counts;
   };
 
-  // ── the important one ────────────────────────────────────────────
+  // Concurrent bookings for the last seats
 
   it('never oversells: 20 simultaneous bookings on a 5-seat class give exactly 5 holds', async () => {
     const members = await createMembers(20);
@@ -140,7 +140,7 @@ describe.skipIf(!TEST_DB_URL)('ClassesRepository seat claim (real Postgres)', ()
     expect(countByStatus(results)).toEqual({ reserved: 1, 'class-full': 1 });
   }, 60_000);
 
-  // ── what counts toward capacity ──────────────────────────────────
+  // What counts toward capacity
 
   it('counts confirmed members AND active holds toward capacity', async () => {
     const members = await createMembers(10);
@@ -195,7 +195,7 @@ describe.skipIf(!TEST_DB_URL)('ClassesRepository seat claim (real Postgres)', ()
     expect(countByStatus(results)).toEqual({ reserved: 8 });
   }, 60_000);
 
-  // ── one person, many clicks ──────────────────────────────────────
+  // One member, many clicks
 
   it('the same member double-clicking gets one hold, not several', async () => {
     const [member] = await createMembers(1);
@@ -224,7 +224,7 @@ describe.skipIf(!TEST_DB_URL)('ClassesRepository seat claim (real Postgres)', ()
     expect(result.status).toBe('class-not-found');
   }, 60_000);
 
-  // ── hold -> confirmed seat ───────────────────────────────────────
+  // Confirming a hold
 
   it('confirming holds turns them into members, and the class then reads as full', async () => {
     const members = await createMembers(6);
@@ -275,7 +275,7 @@ describe.skipIf(!TEST_DB_URL)('ClassesRepository seat claim (real Postgres)', ()
     expect(await prisma.classMember.count({ where: { classId } })).toBe(0);
   }, 60_000);
 
-  // ── the database's own safety net ────────────────────────────────
+  // The database's own safety net
 
   it('the database itself rejects enrolling the same member twice', async () => {
     const [member] = await createMembers(1);

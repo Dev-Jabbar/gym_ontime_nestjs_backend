@@ -22,9 +22,9 @@ export interface ClassCapacityPayload {
   capacity: number;
 }
 
-// Live seat counts. Public on purpose: GET /api/classes is already public
-// and shows the same numbers, so the socket needs no auth. It only ever
-// sends server -> browser; nothing a client sends is acted on.
+// Live seat counts. Public on purpose: GET /api/classes is already public and
+// shows the same numbers, so the socket needs no authentication. It only ever
+// sends server to browser; nothing a client sends is acted on.
 @Injectable()
 @WebSocketGateway({
   namespace: "/classes",
@@ -51,8 +51,8 @@ export class ClassesGateway
   ) {}
 
   onModuleInit() {
-    // Collect ids for 300ms, then de-duplicate: a burst of changes to the
-    // same class (e.g. a webhook retry) becomes ONE database read and ONE
+    // Collect ids for 300ms, then de-duplicate: a burst of changes to the same
+    // class (for example a webhook retry) becomes one database read and one
     // broadcast.
     this.sub = this.events.changes$
       .pipe(
@@ -79,8 +79,8 @@ export class ClassesGateway
     );
   }
 
-  // Reads the numbers straight from Postgres (never the cache), so what we
-  // broadcast is always fresher than GET /classes can be.
+  // Reads the numbers straight from Postgres, never the cache, so a broadcast
+  // is always at least as fresh as GET /classes.
   private async broadcast(classId: string) {
     try {
       const row = await this.classesRepo.findByIdWithMemberCount(classId);

@@ -21,35 +21,27 @@ import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 
-// Mounted at /api/payments (matches Express's app.use("/api/payments", ...)).
-// Route declaration order kept identical to payment.route.ts: webhook,
-// initiate, verify, my-payments, class/:classId, / (all), /:id. The last
-// three are the real ordering hazard here — verify/my-payments/class/:classId
-// all have to come before the bare :id route, same reasoning as every
-// other module's /me-vs-/:id hazard, just with three specific routes
-// instead of one.
+// Mounted at /api/payments.
 //
-// Every method below deliberately returns/throws the SAME
-// {success, message, data?} envelope Express used, rather than relying on
-// Nest's default {statusCode, message, error} exception shape the way
-// every other controller in this app does. This is a genuine, necessary
-// deviation from the established pattern: checked against the real
-// frontend (useBooking.ts, payment-success/page.tsx) and confirmed both
-// files read result.success/result.message/result.data explicitly on
-// BOTH the success and failure paths — not just response.ok. Nest's
-// default exception JSON would silently break that frontend code.
-// HttpException's constructor accepts a custom body as its first
-// argument, which is what makes this possible without abandoning Nest's
-// exception mechanism entirely.
+// Route order matters: `verify`, `my-payments` and `class/:classId` must be
+// declared before the bare `:id` route, and the bare `:id` route stays last.
+//
+// Unlike the other controllers, every method returns or throws a
+// `{ success, message, data? }` envelope instead of Nest's default exception
+// shape (`{ statusCode, message, error }`). The frontend (useBooking.ts and
+// the payment-success page) reads `result.success`, `result.message` and
+// `result.data` on both the success and the failure path, so the default
+// shape would break it. HttpException accepts a custom body as its first
+// argument, which allows this without abandoning Nest's exception mechanism.
 @ApiTags('Payments')
 @Controller('payments')
 export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}
 
-  // POST /api/payments/webhook — PUBLIC, no guard, matches Express.
+  // POST /api/payments/webhook: public, no guard.
   //
   // The HMAC is computed over req.rawBody (the exact bytes Paystack sent,
-  // kept by `rawBody: true` in main.ts), NOT JSON.stringify(req.body).
+  // kept by `rawBody: true` in bootstrap.ts), not JSON.stringify(req.body).
   // @Req() is used instead of a DTO @Body() so the ValidationPipe never
   // touches the payload.
   @ApiOperation({ summary: 'Paystack webhook (called by Paystack, signed with x-paystack-signature)' })
@@ -76,7 +68,7 @@ export class PaymentsController {
       return { success: true, message: 'Webhook processed' };
     } catch (err: any) {
       if (err instanceof HttpException) {
-        // Keep the real status (e.g. 401 for a bad signature).
+        // Keep the real status (for example 401 for a bad signature).
         throw new HttpException(
           { success: false, message: err.message },
           err.getStatus(),
@@ -90,7 +82,7 @@ export class PaymentsController {
     }
   }
 
-  // POST /api/payments/initiate — member only.
+  // POST /api/payments/initiate: member only.
   @ApiOperation({ summary: 'Start a checkout: hold a seat and get the Paystack URL', description: 'Allowed roles: member.' })
   @Post('initiate')
   @ApiCookieAuth()
@@ -120,7 +112,7 @@ export class PaymentsController {
     }
   }
 
-  // GET /api/payments/verify?reference=xxx — member only.
+  // GET /api/payments/verify?reference=xxx: member only.
   @ApiOperation({ summary: 'Verify a payment by reference and enroll the member', description: 'Allowed roles: member.' })
   @Get('verify')
   @ApiCookieAuth()
@@ -144,7 +136,7 @@ export class PaymentsController {
     }
   }
 
-  // GET /api/payments/my-payments — member only.
+  // GET /api/payments/my-payments: member only.
   @ApiOperation({ summary: 'List my payments', description: 'Allowed roles: member.' })
   @Get('my-payments')
   @ApiCookieAuth()
@@ -162,8 +154,8 @@ export class PaymentsController {
     }
   }
 
-  // GET /api/payments/class/:classId — admin only (financial data;
-  // trainers should NOT see payment amounts, same note as Express).
+  // GET /api/payments/class/:classId: admin only. Payment amounts are
+  // financial data, so trainers must not see them.
   @ApiOperation({ summary: 'List the payments for a class', description: 'Allowed roles: admin.' })
   @Get('class/:classId')
   @ApiCookieAuth()
@@ -184,7 +176,7 @@ export class PaymentsController {
     }
   }
 
-  // GET /api/payments — admin only.
+  // GET /api/payments: admin only.
   @ApiOperation({ summary: 'List all payments', description: 'Allowed roles: admin.' })
   @Get()
   @ApiCookieAuth()
@@ -202,8 +194,8 @@ export class PaymentsController {
     }
   }
 
-  // GET /api/payments/:id — admin only. Declared LAST, same ordering
-  // hazard reasoning as every other module's bare :id route.
+  // GET /api/payments/:id: admin only. Declared last because it would
+  // otherwise capture the fixed paths above.
   @ApiOperation({ summary: 'Get one payment', description: 'Allowed roles: admin.' })
   @Get(':id')
   @ApiCookieAuth()

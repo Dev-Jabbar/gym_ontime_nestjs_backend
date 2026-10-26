@@ -6,10 +6,10 @@ import { ClassEvents } from './class-events.service.js';
 import { ClassesGateway } from './classes.gateway.js';
 import { JwtGuardsModule } from '../auth/jwt-guards.module.js';
 
-// Imports JwtGuardsModule directly (same pattern as UsersModule) — this
-// controller's admin/trainer routes need JwtAuthGuard/RolesGuard, and the
-// lesson from Step 1.5 was: import the guards' actual home directly,
-// don't route through another feature module.
+// Imports JwtGuardsModule directly (the same pattern as UsersModule): the
+// controller's admin and trainer routes need JwtAuthGuard and RolesGuard, and
+// those must be imported from their actual home, not via another feature
+// module.
 @Module({
   controllers: [ClassesController],
   providers: [ClassesService, ClassesRepository, ClassEvents, ClassesGateway],

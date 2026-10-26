@@ -5,9 +5,9 @@ import { AdminProfileRepository } from './admin-profile.repository.js';
 export class AdminProfileService {
   constructor(private readonly adminProfileRepo: AdminProfileRepository) {}
 
-  // Returns { avatar: null } instead of a 404 when no profile row exists:
-  // admin accounts are seeded, not registered, so the first visit may
-  // have no row yet.
+  // Returns { avatar: null } instead of a 404 when no profile row exists.
+  // Admin accounts are seeded rather than registered, so the first visit may
+  // find no row.
   async getMyAdminProfile(userId: string) {
     const profile = await this.adminProfileRepo.findByUserId(userId);
     return profile ?? { avatar: null };

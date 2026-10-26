@@ -22,63 +22,52 @@ import {
 } from '../common/cookie.js';
 import { AUTH_THROTTLE } from '../common/throttle.js';
 
-// This controller holds the AUTH-ACTION routes from your user.routes.ts
-// (register/login/logout/me). The CRUD/admin routes from that same file
-// live in UsersController instead (users.controller.ts) — both share the
-// 'users' base path below on purpose, so the final URLs match Express.
-//
-// @Controller('users') is deliberately the SAME base path as
-// UsersController. Two different controller classes contributing routes
-// to one shared prefix is valid Nest, and mirrors how Express did it:
-// one router, multiple concerns. This makes register/login/logout/me land
-// at /api/users/register, /api/users/login, /api/users/logout,
-// /api/users/me — matching your Express paths exactly.
+// Holds the authentication actions (register, login, logout, me). The
+// admin and self-service CRUD routes live in UsersController. Both
+// controllers deliberately share the 'users' base path, so the final URLs
+// are /api/users/register, /api/users/login, /api/users/logout and
+// /api/users/me, matching the Express version of this API.
 @ApiTags('Auth')
 @Controller('users')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  // POST /api/users/register — no guard, same as your public register route
-  // Rate limited per IP (see common/throttle.ts) against account spam.
+  // POST /api/users/register: public. Rate limited per IP against account
+  // spam (see common/throttle.ts).
   @ApiOperation({ summary: 'Register a new member account' })
   @Post('register')
   @UseGuards(ThrottlerGuard)
   @Throttle({ default: AUTH_THROTTLE })
   async register(@Body() dto: RegisterDto) {
-    // No try/catch here — if authService.register() throws
-    // ConflictException, Nest's built-in exception filter turns that into
-    // a 409 response automatically. Compare this to your Express
-    // controller's explicit catch block that checks `instanceof AppError`.
+    // No try/catch: exceptions such as ConflictException are turned into the
+    // right HTTP response by Nest's exception filter.
     return this.authService.register(dto);
   }
 
-  // POST /api/users/login — also public; this IS the login route itself,
-  // so it can't require a token yet
+  // POST /api/users/login: public by necessity, since it issues the token.
   // Rate limited per IP against password guessing (see common/throttle.ts).
   @ApiOperation({ summary: 'Log in (sets the token cookie)' })
   @Post('login')
   @UseGuards(ThrottlerGuard)
   @Throttle({ default: AUTH_THROTTLE })
-  @HttpCode(200) // Nest defaults POST to 201; login isn't "creating" anything
+  @HttpCode(200) // Nest defaults POST to 201; logging in creates nothing.
   async login(
     @Body() dto: LoginDto,
     @Res({ passthrough: true }) res: Response,
   ) {
     const { token, user } = await this.authService.login(dto);
 
-    // Same cookie-setting approach as your Express controller:
-    // HTTP-only, so client-side JS can never read the raw token.
+    // HTTP-only, so client-side JavaScript can never read the raw token.
     // Options are environment-aware (src/common/cookie.ts): lax locally,
-    // SameSite=None + Secure in production so it works across domains.
+    // SameSite=None and Secure in production so it works across domains.
     res.cookie(AUTH_COOKIE_NAME, token, authCookieOptions());
 
-    // Token is in the cookie only — never in the JSON body,
-    // exactly like your Express version.
+    // The token is in the cookie only, never in the JSON body.
     return user;
   }
 
-  // GET /api/users/me — protected. This is the route that actually exercises
-  // JwtAuthGuard end to end: no valid cookie -> 401, automatically.
+  // GET /api/users/me: protected. Without a valid cookie, JwtAuthGuard
+  // responds 401.
   @ApiOperation({ summary: 'Get the logged-in user' })
   @Get('me')
   @ApiCookieAuth()
@@ -87,11 +76,11 @@ export class AuthController {
     return user;
   }
 
-  // POST /api/users/logout — equivalent of your Express logout(): just clears
-  // the cookie, no guard needed (calling this with no cookie is harmless).
-  // clearCookie options must match the options the cookie was SET with
-  // (httpOnly/sameSite/secure) or the browser won't actually clear it —
-  // both come from src/common/cookie.ts so they cannot drift apart.
+  // POST /api/users/logout: clears the cookie. No guard is needed because
+  // calling it without a cookie is harmless. The clearCookie options must
+  // match the options the cookie was set with (httpOnly, sameSite, secure) or
+  // the browser will not clear it; both come from src/common/cookie.ts so
+  // they cannot drift apart.
   @ApiOperation({ summary: 'Log out (clears the cookie)' })
   @Post('logout')
   @HttpCode(200)

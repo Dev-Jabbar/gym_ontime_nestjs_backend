@@ -12,10 +12,11 @@ export class NotificationsService {
     private readonly push: PushService,
   ) {}
 
-  // The frontend reads `relatedClass` / `relatedPayment` (the Mongoose field
-  // names); Prisma returns `relatedClassId` / `relatedPaymentId`, so both
-  // names are sent. The id itself is sent as `id` only: the frontend reads
-  // `_id ?? id`, so it works with this API and with the Express one.
+  // The frontend reads `relatedClass` and `relatedPayment` (the Mongoose
+  // field names), while Prisma returns `relatedClassId` and
+  // `relatedPaymentId`, so both names are sent. The id itself is sent as `id`
+  // only: the frontend reads `_id ?? id`, so it works with this API and with
+  // the Express one.
   private toApiShape(n: Notification) {
     return {
       ...n,
@@ -54,9 +55,9 @@ export class NotificationsService {
 
   /**
    * Single entry point other services call when something is
-   * notification-worthy. Swallows its own errors on purpose (same as
-   * Express): a notification failing to save must never break the action
-   * that triggered it.
+   * notification-worthy. It swallows its own errors on purpose: a
+   * notification failing to save must never break the action that triggered
+   * it.
    */
   async notify(params: {
     userId: string;

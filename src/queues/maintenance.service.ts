@@ -36,13 +36,12 @@ export interface ClassReminderResult {
 }
 
 /**
- * The work done by the repeatable "sweep" job (replaces the Express
- * node-cron payment cleanup). It only calls existing services: no data
- * access of its own.
+ * The work done by the repeatable "sweep" job. It only calls existing
+ * services and has no data access of its own.
  *
- * Idempotent by construction: verifyPayment is the single source of truth
- * and is safe to repeat, and releaseExpiredHolds only deletes holds that
- * are already expired. A retried or overlapping run can't double-apply.
+ * Idempotent by construction: verifyPayment is safe to repeat, and
+ * releaseExpiredHolds only deletes holds that are already expired, so a
+ * retried or overlapping run cannot double-apply.
  */
 @Injectable()
 export class MaintenanceService {
@@ -64,19 +63,20 @@ export class MaintenanceService {
     let unresolved = 0;
     let hardExpired = 0;
 
-    // One bad reference must not stop the rest of the batch, so each
-    // payment gets its own try/catch.
+    // One bad reference must not stop the rest of the batch, so each payment
+    // gets its own try/catch.
     for (const payment of stale) {
       const reference = payment.paystackReference as string;
       try {
-        // Persists completed / needsReview, runs subscription creation and
-        // enrollment on success. Same code path as a user-triggered verify.
+        // Persists completed or needsReview, creates the subscription and
+        // enrolls the member on success. Same code path as a user-triggered
+        // verify.
         await this.paymentsService.verifyPayment(reference);
         resolved++;
         this.logger.log(`Resolved stale payment ${reference}`);
       } catch (err) {
-        // Paystack said "not successful" (verifyPayment already marked it
-        // failed and released the hold) or the check itself errored.
+        // Paystack said "not successful" (verifyPayment already marked the
+        // payment failed and released the hold), or the check itself errored.
         unresolved++;
         this.logger.warn(
           `Could not resolve ${reference} this pass: ${(err as Error).message}`,
@@ -108,17 +108,15 @@ export class MaintenanceService {
   }
 
   /**
-   * Port of the Express subscriptionExpiry job: every subscription still
-   * "active" whose endDate has passed is marked "expired" and the member is
-   * removed from the class (otherwise they would stay enrolled, and count
-   * toward capacity, forever).
+   * Expires every subscription that is still "active" past its endDate and
+   * removes the member from the class, so a lapsed member does not stay
+   * enrolled and count toward capacity.
    *
-   * Order differs from Express on purpose: the member is removed FIRST and
-   * the status flipped LAST. If a step fails, the subscription is still
-   * "active", so the next hourly run retries it. (Flipping first, as Express
-   * did, would leave a lapsed member enrolled forever when removal failed.)
-   * Both steps are safe to repeat, so a retried or overlapping run can't
-   * double-apply.
+   * Order matters: the member is removed first and the status flipped last.
+   * If a step fails the subscription stays "active", so the next hourly run
+   * retries it; flipping first would leave a lapsed member enrolled forever
+   * when removal failed. Both steps are safe to repeat, so a retried or
+   * overlapping run cannot double-apply.
    */
   async runSubscriptionExpiry(): Promise<SubscriptionExpiryResult> {
     const due = await this.paymentsService.findExpiredSubscriptions();
@@ -162,19 +160,20 @@ export class MaintenanceService {
   }
 
   /**
-   * Port of the Express classReminder job: every class whose session today
-   * starts within the reminder window (default 60 minutes) gets one
-   * "Class Starting Soon" notification per enrolled member, through
-   * notify() so it also reaches their devices as a push. lastReminderSentAt
-   * makes it once per class per day (Lagos calendar day).
+   * Sends one "Class Starting Soon" notification per enrolled member for
+   * every class whose session today starts within the reminder window
+   * (default 60 minutes). It goes through notify(), so it also reaches the
+   * member's devices as a push. `lastReminderSentAt` limits it to once per
+   * class per day (Lagos calendar day).
    *
-   * Differences from Express (deliberate): the weekday and start time are
-   * computed in Africa/Lagos instead of the server clock, a recurring class
-   * is not reminded before its first occurrence, inactive members are
-   * skipped, and the text says "about N minute(s)" when the class is closer
-   * than 45 minutes. A class is marked reminded only after all its members
-   * were notified, so a crash midway can re-notify some members next run
-   * (at-least-once, same as Express); one failing class never stops others.
+   * Weekday and start time are computed in Africa/Lagos rather than the
+   * server clock. A recurring class is not reminded before its first
+   * occurrence, inactive members are skipped, and the text says "about N
+   * minute(s)" when the class is closer than 45 minutes.
+   *
+   * A class is marked reminded only after all its members were notified, so
+   * a crash midway can re-notify some members on the next run
+   * (at-least-once delivery). One failing class never stops the others.
    */
   async runClassReminders(now: Date = new Date()): Promise<ClassReminderResult> {
     const classes = await this.classesService.findClassesForReminders(now);

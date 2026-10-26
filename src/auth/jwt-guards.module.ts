@@ -4,23 +4,16 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 import { RolesGuard } from './guards/roles.guard.js';
 
-// This is the fix that actually holds up, after two attempts (forwardRef,
-// then @Global()) that didn't. Both of those tried to make ONE module
-// (AuthModule) the sole owner of JwtModule/JwtAuthGuard/RolesGuard, then
-// share that ownership across a module boundary — first via a circular
-// import, then via Nest's global-provider registry. Guards referenced by
-// class (@UseGuards(JwtAuthGuard)) get resolved against the CONTROLLER'S
-// OWN host module, and that lookup doesn't reliably follow either forwardRef
-// or @Global() the way plain constructor injection does — hence the same
-// "JwtService not available in UsersModule" error surviving both fixes.
+// Standalone module that owns JwtModule and both guards, imported directly by
+// every feature module that needs them (AuthModule, UsersModule, ...).
 //
-// The fix that removes the problem instead of routing around it: don't let
-// any module "own" these and export them to another. Put JwtModule +
-// both guards in their OWN standalone module, and have every feature module
-// that needs them (AuthModule, UsersModule) import THIS module directly.
-// Each of AuthModule and UsersModule now has its own direct line to
-// JwtService's actual provider — no cross-feature-module lookup involved
-// at all, for either constructor injection or @UseGuards() class references.
+// Guards referenced by class (@UseGuards(JwtAuthGuard)) are resolved against
+// the controller's own host module, and that lookup does not reliably follow
+// forwardRef or @Global() the way constructor injection does. Having one
+// feature module own the guards and export them across a module boundary
+// therefore fails with "JwtService not available". Giving each importing
+// module a direct line to JwtService's provider avoids any cross-module
+// lookup.
 @Module({
   imports: [
     JwtModule.registerAsync({
@@ -33,9 +26,9 @@ import { RolesGuard } from './guards/roles.guard.js';
     }),
   ],
   providers: [JwtAuthGuard, RolesGuard],
-  // Re-exporting JwtModule alongside the guards means anything that imports
-  // JwtGuardsModule also gets JwtService injectable directly (AuthService
-  // needs this to sign tokens on login/register).
+  // Re-exporting JwtModule alongside the guards makes JwtService injectable
+  // in any module that imports JwtGuardsModule (AuthService needs it to sign
+  // tokens).
   exports: [JwtModule, JwtAuthGuard, RolesGuard],
 })
 export class JwtGuardsModule {}

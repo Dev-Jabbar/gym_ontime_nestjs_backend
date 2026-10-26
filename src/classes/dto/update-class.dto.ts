@@ -25,11 +25,10 @@ const DAY_VALUES = [
   'sunday',
 ] as const;
 
-// Equivalent of updateClassSchema (Zod). All fields optional, since this
-// is a partial update. NOTE: Express's Zod schema also `.refine()`s that
-// at least one field must be present — that check is done in
-// ClassesService.updateClass() instead here, since class-validator
-// doesn't have a clean built-in equivalent for "object isn't fully empty."
+// Request body for a partial class update: every field is optional. The rule
+// that at least one field must be present is enforced in
+// ClassesService.updateClass, because class-validator has no clean built-in
+// for "object is not completely empty".
 export class UpdateClassDto {
   @IsOptional()
   @IsString()

@@ -18,11 +18,10 @@ const FITNESS_GOAL_VALUES = [
   'general_fitness',
 ] as const;
 
-// Kept nested (matching Express's Mongoose-embedded shape) even though
-// the Prisma schema stores this as two flat columns
-// (emergencyContactName/emergencyContactPhone) — the service maps
-// between the two. Wire contract stays identical to Express on purpose,
-// so nothing on the frontend has to change.
+// Kept nested (`emergencyContact: { name, phone }`) in the API even though
+// the Prisma schema stores it as two flat columns (emergencyContactName and
+// emergencyContactPhone); the service maps between the two. This keeps the
+// wire contract the frontend expects.
 export class EmergencyContactDto {
   @IsString()
   @MinLength(1, { message: 'Emergency contact name is required' })
@@ -33,9 +32,8 @@ export class EmergencyContactDto {
   phone: string;
 }
 
-// Equivalent of createMemberSchema (Zod). Every field optional — a
-// member profile can be created with nothing but the fact that it
-// belongs to a user, same as Express.
+// Request body for creating a member profile. Every field is optional: a
+// profile can exist with nothing but the fact that it belongs to a user.
 export class CreateMemberProfileDto {
   @IsOptional()
   @IsUrl()
@@ -67,8 +65,7 @@ export class CreateMemberProfileDto {
   emergencyContact?: EmergencyContactDto;
 }
 
-// Equivalent of updateMemberSchema (Zod) — same fields, same "at least
-// one must be provided" rule (enforced in the service, same pattern as
-// UpdateClassDto/ClassesService.updateClass, since class-validator has
-// no clean built-in for "object isn't fully empty").
+// Request body for updating a member profile. Same fields as creation; the
+// rule that at least one must be provided is enforced in the service, since
+// class-validator has no clean built-in for "object is not completely empty".
 export class UpdateMemberProfileDto extends CreateMemberProfileDto {}

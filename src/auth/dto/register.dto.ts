@@ -1,13 +1,8 @@
 import { IsEmail, IsString, MinLength } from 'class-validator';
 
-// This is the direct equivalent of your registerUserSchema (Zod), just a
-// different library's syntax: instead of chaining z.string().min(1)...,
-// class-validator uses decorators ON the fields of an actual class.
-// A global ValidationPipe (wired in main.ts) runs these checks automatically
-// before this DTO ever reaches your controller method — same "reject bad
-// input before it touches business logic" idea as loginUserSchema.parse()
-// in your Express controller, just triggered by Nest's pipeline instead of
-// a manual .parse() call you write yourself.
+// Request body for registration. Validation rules are class-validator
+// decorators on the fields; the global ValidationPipe (see bootstrap.ts) runs
+// them before the DTO reaches the controller.
 export class RegisterDto {
   @IsString()
   @MinLength(1, { message: 'Name is required' })

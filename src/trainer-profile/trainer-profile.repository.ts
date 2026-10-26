@@ -11,7 +11,7 @@ export class TrainerProfileRepository {
     private readonly cache: CacheService,
   ) {}
 
-  // Includes inactive (soft-deleted) profiles — used to decide between
+  // Includes inactive (soft-deleted) profiles. Used to decide between
   // reactivating and creating.
   findByUserId(userId: string) {
     return this.prisma.trainerProfile.findUnique({ where: { userId } });
@@ -48,10 +48,9 @@ export class TrainerProfileRepository {
   }
 
   /**
-   * Soft delete + unassign from their classes, atomically, so classes are
-   * never left pointing at an inactive trainer. The classes themselves
-   * stay (trainerless), same as Express. Returns false if there was no
-   * active profile.
+   * Soft delete plus unassign from their classes, atomically, so classes are
+   * never left pointing at an inactive trainer. The classes themselves stay,
+   * without a trainer. Returns false if there was no active profile.
    */
   async deactivateAndUnassignClasses(userId: string): Promise<boolean> {
     const done = await this.prisma.$transaction(async (tx) => {

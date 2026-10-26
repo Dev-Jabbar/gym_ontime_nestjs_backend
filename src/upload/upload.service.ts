@@ -1,26 +1,21 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import cloudinary from './cloudinary.config.js';
 
-// Direct port of upload.controller.ts's getUploadSignature, minus the
-// `if (!req.user)` check — that check existed in Express because protect()
-// only guarantees a token was verified, not that the controller can trust
-// req.user is populated by the time it runs its own body. Here,
-// JwtAuthGuard throws UnauthorizedException itself and this method never
-// executes unless it already returned true, so there's nothing left to
-// check for.
+// Issues signed parameters for direct-to-Cloudinary uploads.
 //
-// How the signed flow works (same as Express):
-// 1. Browser calls this endpoint (with auth cookie) to get a signature.
-// 2. Browser uploads the file directly to Cloudinary's API, attaching
-//    that signature + timestamp + api_key + folder.
-// 3. Cloudinary verifies the signature server-side using the same secret
-//    this service used to generate it — proving the request was
-//    authorized by *our* backend, not forged by a random client.
+// How the signed flow works:
+// 1. The browser calls this endpoint (with its auth cookie) to get a
+//    signature.
+// 2. The browser uploads the file directly to Cloudinary, attaching the
+//    signature, timestamp, api_key and folder.
+// 3. Cloudinary re-derives the signature with the same secret, proving the
+//    request was authorised by this backend.
 //
-// The API secret (CLOUDINARY_API_SECRET) is used here, in Node, and is
-// never sent to or visible from the browser at any point. This backend
-// never touches the file bytes themselves — only issues permission to
-// upload directly to Cloudinary.
+// CLOUDINARY_API_SECRET is only ever used here, on the server, and is never
+// sent to the browser. This backend never handles the file bytes.
+//
+// No `req.user` check is needed: JwtAuthGuard rejects unauthenticated
+// requests before this method runs.
 @Injectable()
 export class UploadService {
   getUploadSignature() {
@@ -28,10 +23,10 @@ export class UploadService {
       const timestamp = Math.round(Date.now() / 1000);
       const folder = 'avatars';
 
-      // Every parameter included here MUST be sent back with the actual
-      // upload request later, exactly as-is — Cloudinary re-derives the
-      // signature from whatever params arrive and compares it to this one.
-      // Mismatched or missing params (even an extra one) => rejected.
+      // Every parameter signed here must be sent back with the upload
+      // request exactly as is. Cloudinary re-derives the signature from the
+      // parameters it receives, so a missing, changed or extra parameter
+      // causes a rejection.
       const paramsToSign = { timestamp, folder };
 
       const signature = cloudinary.utils.api_sign_request(
@@ -47,13 +42,10 @@ export class UploadService {
         cloudName: process.env.CLOUDINARY_CLOUD_NAME,
       };
     } catch (error) {
-      // Kept as an explicit try/catch (unlike most other services, which
-      // lean on Nest's automatic exception filter) specifically to match
-      // Express's custom error message. `cloudinary.utils.api_sign_request`
-      // is synchronous and only realistically throws if the API secret is
-      // missing/malformed — a config problem, not a per-request one — but
-      // Express surfaced a specific message for it, so this does too rather
-      // than falling through to Nest's generic "Internal server error".
+      // api_sign_request is synchronous and only realistically throws when the
+      // API secret is missing or malformed, which is a configuration problem.
+      // An explicit catch returns a specific message instead of Nest's generic
+      // "Internal server error".
       console.error('Cloudinary signature error:', error);
       throw new InternalServerErrorException(
         'Failed to generate upload signature',

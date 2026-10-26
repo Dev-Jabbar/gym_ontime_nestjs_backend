@@ -19,9 +19,9 @@ export type ReserveSeatResult =
   | { status: 'active-hold' }
   | { status: 'class-full' };
 
-// Data access for Class, ClassMember and PendingSeat. Contains NO business
-// rules and throws NO HTTP exceptions — it returns data (or a result code)
-// and ClassesService decides what that means.
+// Data access for Class, ClassMember and PendingSeat. Contains no business
+// rules and throws no HTTP exceptions: it returns data or a result code, and
+// ClassesService decides what that means.
 @Injectable()
 export class ClassesRepository {
   constructor(
@@ -33,11 +33,11 @@ export class ClassesRepository {
   // ── Seat holds ────────────────────────────────────────────────────
 
   /**
-   * The atomic reserve. SELECT ... FOR UPDATE row-locks the Class for the
-   * whole transaction (Prisma's query builder can't express FOR UPDATE, so
-   * this one query is raw SQL), which is what makes the capacity check
-   * below race-free. Returns a result code instead of throwing so the
-   * service owns the error-message mapping.
+   * Atomically reserves a seat. SELECT ... FOR UPDATE row-locks the Class for
+   * the whole transaction, which makes the capacity check below race-free.
+   * Prisma's query builder cannot express FOR UPDATE, so this one query is
+   * raw SQL. Returns a result code instead of throwing, so the service owns
+   * the mapping to error messages.
    */
   reserveSeat(
     classId: string,
@@ -54,7 +54,7 @@ export class ClassesRepository {
       const classRow = rows[0];
       if (!classRow) return { status: 'class-not-found' as const };
 
-      // Clear this member's own lapsed holds so a retry isn't blocked by them.
+      // Clear this member's own lapsed holds so a retry is not blocked by them.
       await tx.pendingSeat.deleteMany({
         where: { classId, memberProfileId, expiresAt: { lte: now } },
       });
@@ -69,7 +69,7 @@ export class ClassesRepository {
       });
       if (activeHold) return { status: 'active-hold' as const };
 
-      // Safe from check-then-write races only because the row lock from
+      // Safe from check-then-write races only because the row lock taken by
       // the first query is still held.
       if (classRow.capacity != null) {
         const [memberCount, pendingCount] = await Promise.all([
@@ -95,9 +95,9 @@ export class ClassesRepository {
   }
 
   /**
-   * Turns an unexpired hold into a ClassMember row. Returns null if there
-   * is no unexpired hold. Upsert (not create) keeps it idempotent for
-   * webhook retries.
+   * Turns an unexpired hold into a ClassMember row. Returns null if there is
+   * no unexpired hold. Uses an upsert rather than a create so that webhook
+   * retries are idempotent.
    */
   async confirmHold(classId: string, memberProfileId: string) {
     const now = new Date();
@@ -130,8 +130,8 @@ export class ClassesRepository {
   }
 
   /**
-   * Raw facts for getClassEnrollmentStatus. Returns null when the class
-   * doesn't exist. Interpreting these facts is the service's job.
+   * Raw facts for getClassEnrollmentStatus. Returns null when the class does
+   * not exist. Interpreting the facts is the service's job.
    */
   async getEnrollmentSnapshot(classId: string, memberProfileId: string) {
     const classRow = await this.prisma.class.findUnique({
@@ -164,10 +164,10 @@ export class ClassesRepository {
     return this.prisma.class.findUnique({ where: { id } });
   }
 
-  // CACHED (cache-aside). The cached copy went through JSON, so schedule is
-  // an ISO string rather than a Date; the only consumer, transformClass(),
-  // handles both. `status` is computed from the clock at read time in the
-  // service, so it is never stale.
+  // Cached (cache-aside). The cached copy has been through JSON, so
+  // `schedule` is an ISO string rather than a Date; its only consumer,
+  // transformClass(), handles both. `status` is computed from the clock at
+  // read time in the service, so it is never stale.
   findByIdWithRelations(id: string) {
     return this.cache.wrap(CacheKeys.classDetail(id), CLASSES_TTL_SECONDS, () =>
       this.prisma.class.findUnique({
@@ -185,8 +185,8 @@ export class ClassesRepository {
   }
 
   // Classes that could need a reminder now: they have at least one active
-  // member, and are either recurring or a one-off that has not started yet.
-  // NOT cached: the reminder job needs fresh data.
+  // member and are either recurring or a one-off that has not started yet.
+  // Not cached, because the reminder job needs fresh data.
   findForReminders(now: Date) {
     return this.prisma.class.findMany({
       where: {
@@ -208,8 +208,9 @@ export class ClassesRepository {
     });
   }
 
-  // updateMany so a class deleted meanwhile is a no-op, not an error. Does
-  // not touch the cache: lastReminderSentAt is not part of the API shape.
+  // Uses updateMany so a class deleted in the meantime is a no-op rather than
+  // an error. Does not touch the cache: lastReminderSentAt is not part of the
+  // API shape.
   async markReminderSent(id: string, at: Date): Promise<void> {
     await this.prisma.class.updateMany({
       where: { id },
@@ -225,7 +226,7 @@ export class ClassesRepository {
     return row?.name ?? null;
   }
 
-  // CACHED (cache-aside), same JSON caveat as findByIdWithRelations.
+  // Cached (cache-aside); same JSON caveat as findByIdWithRelations.
   findAllWithRelations() {
     return this.cache.wrap(CacheKeys.classList(), CLASSES_TTL_SECONDS, () =>
       this.prisma.class.findMany({
@@ -253,7 +254,7 @@ export class ClassesRepository {
 
   // ── Class writes ──────────────────────────────────────────────────
 
-  // Every write below invalidates AFTER it commits.
+  // Every write below invalidates the cache after it commits.
 
   async create(data: Prisma.ClassUncheckedCreateInput) {
     const created = await this.prisma.class.create({ data });
@@ -325,11 +326,11 @@ export class ClassesRepository {
   }
 
   // ── Cross-aggregate lookups ───────────────────────────────────────
-  // ClassesService needs to resolve a User id into a Trainer/Member
-  // profile. These live here (rather than calling UsersService etc.)
-  // because TrainerProfileModule already imports ClassesModule — importing
-  // back would create a module cycle — and because the existing behavior
-  // (no isActive filter) differs from UsersService.findById's.
+  // ClassesService resolves a User id into a trainer or member profile. These
+  // lookups live here rather than going through UsersService because
+  // TrainerProfileModule already imports ClassesModule (importing back would
+  // create a module cycle), and because they intentionally apply no isActive
+  // filter, unlike UsersService.findById.
 
   findUserById(id: string) {
     return this.prisma.user.findUnique({ where: { id } });

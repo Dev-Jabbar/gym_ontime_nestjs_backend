@@ -3,9 +3,9 @@ import * as bcrypt from 'bcrypt';
 import type { Role, User } from '@prisma/client';
 import { UsersRepository } from './users.repository.js';
 
-// Business rules for users: password hashing/comparison, existence and
-// state checks, stripping the password from responses. All database access
-// is in UsersRepository.
+// Business rules for users: password hashing and comparison, existence and
+// state checks, and stripping the password from responses. All database
+// access is in UsersRepository.
 @Injectable()
 export class UsersService {
   constructor(private readonly usersRepo: UsersRepository) {}
@@ -22,9 +22,9 @@ export class UsersService {
     return this.usersRepo.findActiveById(id);
   }
 
-  // Registration Case 3 (brand-new email). The repository creates the User
-  // and its MemberProfile in one transaction; hashing happens here because
-  // there's no Mongoose pre("save") hook equivalent.
+  // Registration for a brand-new email. The repository creates the User and
+  // its MemberProfile in one transaction. Hashing happens here, because
+  // Prisma has no equivalent of a Mongoose pre("save") hook.
   async create(data: {
     name: string;
     email: string;
@@ -38,7 +38,7 @@ export class UsersService {
     });
   }
 
-  // Registration Case 2 (revive a soft-deleted account).
+  // Registration for a soft-deleted account: revives it.
   async restore(
     userId: string,
     data: { name: string; password: string },
@@ -54,14 +54,14 @@ export class UsersService {
     return bcrypt.compare(candidate, user.password);
   }
 
-  // Active users only, password stripped.
+  // Active users only, with the password stripped.
   async findAllActive(): Promise<Omit<User, 'password'>[]> {
     const users = await this.usersRepo.findAllActive();
     return users.map(({ password: _password, ...rest }) => rest);
   }
 
-  // HONEST GAP vs Express: Express also re-signs the JWT when role/email
-  // changes; this doesn't yet (see migration plan backlog).
+  // Known gap: the Express version also re-signs the JWT when the role or
+  // email changes; this one does not yet.
   async update(
     id: string,
     data: { name?: string; email?: string; role?: Role },

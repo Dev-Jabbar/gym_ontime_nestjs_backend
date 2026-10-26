@@ -37,9 +37,9 @@ export class TrainerProfileService {
   }
 
   /**
-   * Equivalent of createTrainerProfile — reactivates an existing (possibly
-   * soft-deleted) profile instead of creating a second row, same as
-   * Express and same as member-profile.
+   * Creates a trainer profile, or reactivates an existing (possibly
+   * soft-deleted) one instead of creating a second row, as the member
+   * profile does.
    */
   async createTrainerProfile(userId: string, dto: CreateTrainerProfileDto) {
     if (!dto) throw new ConflictException('Request body is required');
@@ -72,9 +72,9 @@ export class TrainerProfileService {
     return this.trainerProfileRepo.updateByUserId(userId, this.toDbData(dto));
   }
 
-  // Soft delete + unassign from classes. The transaction lives in the
-  // repository; the service decides "no active profile" means a 404.
-  // Leaves the trainer's classes trainerless, same as Express and same as
+  // Soft delete plus unassign from classes. The repository runs the
+  // transaction; the service decides that "no active profile" means a 404.
+  // The trainer's classes are left without a trainer, as in
   // UsersService.softDelete.
   async deleteMyTrainerProfile(userId: string) {
     const deleted =

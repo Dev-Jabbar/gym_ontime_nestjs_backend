@@ -25,8 +25,7 @@ export class MemberProfileService {
   constructor(private readonly memberProfileRepo: MemberProfileRepository) {}
 
   // Maps the nested `emergencyContact` wire shape onto the flat Prisma
-  // columns. Both create and update need this same mapping, so it's
-  // factored out once here.
+  // columns. Create and update share this mapping.
   private toDbData(data: ProfileData) {
     return {
       ...(data.avatar !== undefined && { avatar: data.avatar }),
@@ -46,10 +45,8 @@ export class MemberProfileService {
     };
   }
 
-  // Re-nests the flat DB columns back into `emergencyContact: {name,
-  // phone}` for every response — keeps the API's wire shape identical to
-  // Express's Mongoose-embedded original, regardless of how Postgres
-  // actually stores it.
+  // Re-nests the flat database columns into `emergencyContact: { name, phone }`
+  // so the API's wire shape does not depend on how Postgres stores it.
   private toApiShape(profile: any) {
     const { emergencyContactName, emergencyContactPhone, ...rest } = profile;
     return {
@@ -62,11 +59,10 @@ export class MemberProfileService {
   }
 
   /**
-   * Equivalent of createMemberProfile — reactivates an existing
-   * (possibly soft-deleted) profile with the new data instead of
-   * creating a second one for the same user, same reasoning as Express:
-   * deleteMyMemberProfile never hard-deletes, so a returning member's
-   * profile already exists, just inactive.
+   * Creates a member profile, or reactivates an existing (possibly
+   * soft-deleted) one with the new data instead of creating a second profile
+   * for the same user. Deleting a profile never hard-deletes it, so a
+   * returning member's profile already exists, just inactive.
    */
   async createMemberProfile(userId: string, dto: CreateMemberProfileDto) {
     if (!dto) {
@@ -94,14 +90,10 @@ export class MemberProfileService {
     return this.toApiShape(profile);
   }
 
-  // Equivalent of MemberProfileRepo.findMemberProfileByUserId — returns
-  // the raw active profile or null, no throw. Added for PaymentsService,
-  // which needs a checkable null partway through a larger flow (e.g.
-  // createCheckoutSession's "member profile not found" check), not an
-  // HTTP exception thrown mid-transaction. Kept separate from
-  // getMyMemberProfile rather than changing that method's throw
-  // behavior, since getMyMemberProfile is already live-tested and its
-  // contract (throw on missing) is relied on by its own controller route.
+  // Returns the raw active profile, or null instead of throwing. Used by
+  // PaymentsService, which needs a checkable null partway through a larger
+  // flow rather than an HTTP exception. Kept separate from getMyMemberProfile,
+  // whose contract is to throw when the profile is missing.
   findActiveProfileByUserId(userId: string) {
     return this.memberProfileRepo.findActiveByUserId(userId);
   }
@@ -121,9 +113,9 @@ export class MemberProfileService {
     return this.toApiShape(updated);
   }
 
-  // Soft delete. The transaction (remove enrollments + deactivate
-  // profile) lives in the repository; the service decides that "no active
-  // profile" means a 404.
+  // Soft delete. The repository runs the transaction (remove enrollments and
+  // deactivate the profile); the service decides that "no active profile"
+  // means a 404.
   async deleteMyMemberProfile(userId: string) {
     const deleted =
       await this.memberProfileRepo.deactivateWithEnrollmentCleanup(userId);
@@ -137,8 +129,8 @@ export class MemberProfileService {
     return profiles.map((p) => this.toApiShape(p));
   }
 
-  // Admins and trainers may view any member. A member may only view their
-  // own profile, so one member can't read another member's private data.
+  // Admins and trainers may view any member. A member may only view their own
+  // profile, so one member cannot read another member's private data.
   async getMemberProfileById(
     id: string,
     requester: { id: string; role: string },

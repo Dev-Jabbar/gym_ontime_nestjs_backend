@@ -13,14 +13,12 @@ import {
 
 const GENDER_VALUES = ['male', 'female', 'prefer_not_to_say'] as const;
 
-// Equivalent of createTrainerSchema (Zod). Every field optional, same as
-// Express — a trainer profile can exist with nothing but the userId.
+// Request body for creating a trainer profile. Every field is optional: a
+// profile can exist with nothing but the user id.
 //
-// DIFFERENCE FROM EXPRESS: `experience` uses @IsInt, Express's z.number()
-// accepted decimals (e.g. 2.5). The Prisma column is `Int?`, so a decimal
-// would have reached Postgres and thrown a raw 500. Rejecting it here as a
-// clean 400 is the honest translation of "years of experience" into this
-// schema. If half-years matter, the column should become Float instead.
+// `experience` must be an integer because the Prisma column is `Int?`; a
+// decimal would reach Postgres and surface as a raw 500. If half-years ever
+// matter, the column should become Float.
 export class CreateTrainerProfileDto {
   @IsOptional()
   @IsUrl({}, { message: 'Avatar must be a valid URL' })
@@ -63,6 +61,6 @@ export class CreateTrainerProfileDto {
   gender?: (typeof GENDER_VALUES)[number];
 }
 
-// Equivalent of updateTrainerSchema — same fields; the "at least one
-// field" rule is enforced in the service (same pattern as member-profile).
+// Request body for updating a trainer profile. Same fields; the rule that at
+// least one must be provided is enforced in the service.
 export class UpdateTrainerProfileDto extends CreateTrainerProfileDto {}

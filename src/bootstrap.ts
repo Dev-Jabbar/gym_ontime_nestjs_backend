@@ -8,26 +8,26 @@ import { ALLOWED_ORIGINS } from './common/cors.js';
 import { validateEnv } from './common/env.validation.js';
 import { DOCS_PATH, setupSwagger } from './common/swagger.js';
 
-// The real app start-up. main.ts loads this AFTER tracing has started (see
-// the note in main.ts), so it is imported dynamically, never statically.
+// Application start-up. main.ts imports this dynamically, after tracing has
+// started (see the note in main.ts), so it must never be imported statically.
 async function bootstrap() {
-  // Stop right away, with a clear message, if a required setting is missing.
+  // Stop immediately, with a clear message, if a required setting is missing.
   validateEnv();
 
   // rawBody: true makes Nest keep the exact bytes of every JSON request on
-  // req.rawBody (a Buffer), next to the parsed req.body. The Paystack
-  // webhook needs it: Paystack signs the bytes it sent, and re-serialising
-  // the parsed body with JSON.stringify can differ (spacing, key order,
-  // number formatting) and wrongly fail the signature check.
+  // req.rawBody (a Buffer) next to the parsed req.body. The Paystack webhook
+  // needs it: Paystack signs the bytes it sent, and re-serialising the parsed
+  // body with JSON.stringify can differ (spacing, key order, number
+  // formatting) and wrongly fail the signature check.
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     rawBody: true,
   });
 
-  // Behind a platform proxy (Render, Railway, Fly, Kubernetes ingress) every
-  // request arrives from the proxy's address, so without this the login rate
-  // limit would see ONE client for everybody and lock real users out
-  // together. TRUST_PROXY_HOPS = how many proxies sit in front of the app:
-  // default 1 in production (a single platform proxy), off locally.
+  // Behind a platform proxy (Render, Railway, Fly, a Kubernetes ingress)
+  // every request arrives from the proxy's address, so without this the login
+  // rate limit would see one client for everybody and lock real users out
+  // together. TRUST_PROXY_HOPS is the number of proxies in front of the app:
+  // 1 by default in production, off locally.
   const hops = Number(
     process.env.TRUST_PROXY_HOPS ??
       (process.env.NODE_ENV === 'production' ? 1 : 0),
@@ -35,12 +35,12 @@ async function bootstrap() {
   if (Number.isInteger(hops) && hops > 0) app.set('trust proxy', hops);
 
   // Standard security headers (nosniff, frame protection, HSTS over https,
-  // no X-Powered-By ...). This API only returns JSON, so helmet's default
-  // Content-Security-Policy is fine. CORP is relaxed to cross-origin so the
-  // Vercel frontend can keep reading responses from another domain.
-  // The Swagger UI page needs inline scripts and styles, which helmet's
-  // default Content-Security-Policy blocks, so the docs path gets helmet
-  // without CSP. Every other path keeps the full default policy.
+  // no X-Powered-By). The API only returns JSON, so helmet's default
+  // Content-Security-Policy is appropriate. Cross-Origin-Resource-Policy is
+  // relaxed to cross-origin so the frontend on another domain can read
+  // responses. The Swagger UI needs inline scripts and styles, which the
+  // default policy blocks, so the docs paths get helmet without CSP and every
+  // other path keeps the full policy.
   const apiHelmet = helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } });
   const docsHelmet = helmet({
     contentSecurityPolicy: false,
@@ -51,32 +51,25 @@ async function bootstrap() {
     (isDocs ? docsHelmet : apiHelmet)(req as never, res as never, next as never);
   });
 
-  // Equivalent of app.use(cookieParser()) in your Express server.ts —
-  // without this, req.cookies is undefined and JwtAuthGuard can't read
-  // the token cookie at all.
+  // Parses cookies so req.cookies is populated; JwtAuthGuard reads the login
+  // token from there.
   app.use(cookieParser());
 
-  // Equivalent of running loginUserSchema.parse(req.body) yourself in
-  // every controller — this ONE line makes every DTO's class-validator
-  // decorators run automatically, globally, before any controller method
-  // sees the request body.
+  // Runs every DTO's class-validator rules globally, before any controller
+  // method sees the request body.
   app.useGlobalPipes(new ValidationPipe({ whitelist: true }));
 
-  // Matches your Express app's `app.use("/api/classes", ...)` etc. — every
-  // route in Express is mounted under /api. Nest routes were NOT under
-  // /api until now, which meant e.g. /auth/register here vs
-  // /api/users/register in Express: two completely different URLs. This
-  // one line makes every @Controller() path in this app get an /api
-  // prefix automatically, matching Express's mounting convention exactly.
+  // Every route is served under /api. The paths match the Express version
+  // of this API (for example /api/users/register), so the same frontend
+  // works against either backend.
   app.setGlobalPrefix('api');
 
   // Interactive API docs at /api/docs (see common/swagger.ts).
   setupSwagger(app);
 
-  // Equivalent of your CORS setup — credentials: true is required for the
-  // browser to send/receive the httpOnly cookie cross-origin. Origins kept
-  // identical to your Express server.ts list so swapping which backend the
-  // frontend points at doesn't also require a CORS change.
+  // credentials: true is required for the browser to send and receive the
+  // HTTP-only cookie cross-origin. The allowed origins come from
+  // common/cors.ts, which is shared with the WebSocket gateway.
   app.enableCors({
     origin: ALLOWED_ORIGINS,
     credentials: true,

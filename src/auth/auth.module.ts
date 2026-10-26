@@ -4,11 +4,9 @@ import { AuthService } from './auth.service.js';
 import { UsersModule } from '../users/users.module.js';
 import { JwtGuardsModule } from './jwt-guards.module.js';
 
-// No @Global(), no forwardRef — AuthModule just imports the two things it
-// actually needs: UsersModule (so AuthService can inject UsersService) and
-// JwtGuardsModule (so AuthController's @UseGuards(JwtAuthGuard) and
-// AuthService's JwtService injection both resolve, via JwtGuardsModule's
-// own self-contained JwtModule.registerAsync(...)).
+// No @Global() and no forwardRef: AuthModule imports only what it needs.
+// UsersModule provides UsersService to AuthService, and JwtGuardsModule
+// provides JwtService (via its own JwtModule.registerAsync) and the guards.
 @Module({
   imports: [UsersModule, JwtGuardsModule],
   controllers: [AuthController],

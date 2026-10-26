@@ -8,14 +8,11 @@ import { MemberProfileModule } from '../member-profile/member-profile.module.js'
 import { ClassesModule } from '../classes/classes.module.js';
 import { NotificationsModule } from '../notifications/notifications.module.js';
 
-// The largest dependency list of any module so far — mirrors how many
-// other services Express's payment.service.ts imports directly
-// (user.repository, class.repository, member-profile.repository,
-// class-subscription.repository, notification.service). JwtGuardsModule
-// for the guards; the other four for the actual cross-feature calls
-// PaymentsService makes (findById, findActiveProfileByUserId,
-// reserveSeat/confirmSeat/releaseSeat/getClassEnrollmentStatus/
-// findClassById, notify).
+// This module has the largest dependency list because PaymentsService
+// coordinates several features: UsersModule (findById), MemberProfileModule
+// (findActiveProfileByUserId), ClassesModule (the seat-hold methods and
+// findClassById) and NotificationsModule (notify). JwtGuardsModule provides
+// the guards.
 @Module({
   imports: [
     JwtGuardsModule,

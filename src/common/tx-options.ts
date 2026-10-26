@@ -1,5 +1,5 @@
-// Prisma's default maxWait (time to get a free connection to START a
-// transaction) is 2s — too tight against Neon's free-tier pool. Every
-// repository transaction passes this instead. (Was previously repeated
-// inline at every $transaction call site.)
+// Prisma's default maxWait (the time allowed to get a free connection to start
+// a transaction) is 2s, which is too tight for a remote pooled database such
+// as Neon's free tier. Every repository transaction passes these options
+// instead.
 export const TX_OPTIONS = { maxWait: 10000, timeout: 20000 } as const;

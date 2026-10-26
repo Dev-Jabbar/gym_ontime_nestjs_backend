@@ -5,15 +5,9 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import { RegisterDeviceTokenDto, UnregisterDeviceTokenDto } from './dto/device-token.dto.js';
 
-// Mounted at /api/notifications. All three routes just need a valid
-// login (protect() with no roles in Express) — no RolesGuard needed here,
-// unlike AdminProfileController/ClassesController's admin-gated routes.
-//
-// No segment-count collision risk between 'mark-all-read' (1 segment)
-// and ':id/read' (2 segments) — same non-issue as the by-member/
-// member-count routes in ClassesController, not the real /me-vs-/:id
-// hazard from Step 1.5. Declared in the same order as Express anyway,
-// for readability.
+// Mounted at /api/notifications. Every route only needs a valid login, so
+// there is no RolesGuard. `mark-all-read` (one segment) and `:id/read` (two
+// segments) cannot collide, so declaration order is not significant.
 @ApiTags('Notifications')
 @Controller('notifications')
 @ApiCookieAuth()

@@ -5,12 +5,12 @@ import { CLASSES_PREFIX } from './cache-keys.js';
 /**
  * Thin Redis wrapper used by repositories (cache-aside).
  *
- * THE CACHE IS AN OPTIMISATION, NEVER A DEPENDENCY. Every method here
- * swallows Redis errors and degrades to "no cache":
- *   - REDIS_URL not set  -> cache disabled, every call is a no-op / miss
- *   - Redis down         -> commands fail fast (no offline queue, short
- *                           timeout) and the caller falls through to Postgres
- * so stopping the Redis container never takes the API down.
+ * The cache is an optimisation, never a dependency. Every method swallows
+ * Redis errors and degrades to "no cache":
+ *   - REDIS_URL not set: the cache is disabled and every call is a miss.
+ *   - Redis down: commands fail fast (no offline queue, short timeout) and
+ *     the caller falls through to Postgres.
+ * Stopping Redis therefore never takes the API down.
  */
 @Injectable()
 export class CacheService implements OnModuleDestroy {
@@ -33,18 +33,19 @@ export class CacheService implements OnModuleDestroy {
       maxRetriesPerRequest: 1,
       connectTimeout: 2000,
       commandTimeout: 500,
-      // Keep trying to reconnect forever, backing off up to 5s.
+      // Keep reconnecting indefinitely, backing off up to 5s.
       retryStrategy: (times) => Math.min(times * 500, 5000),
     });
 
-    // Without an 'error' listener ioredis spams "Unhandled error event".
-    // Log it, but at most once every 30s so a dead Redis doesn't flood logs.
+    // Without an 'error' listener ioredis logs "Unhandled error event". Log
+    // it ourselves, at most once every 30s, so a dead Redis cannot flood the
+    // logs.
     this.client.on('error', (err) => {
       const now = Date.now();
       if (now - this.lastErrorLogAt > 30_000) {
         this.lastErrorLogAt = now;
-        // Connection failures (ECONNREFUSED on IPv4 + IPv6) arrive as an
-        // AggregateError whose `message` is empty, so fall back to the code.
+        // Connection failures (ECONNREFUSED on IPv4 and IPv6) arrive as an
+        // AggregateError with an empty `message`, so fall back to the code.
         const detail =
           err.message || (err as NodeJS.ErrnoException).code || err.name;
         this.logger.warn(`Redis error (serving from Postgres): ${detail}`);
@@ -54,15 +55,15 @@ export class CacheService implements OnModuleDestroy {
   }
 
   /**
-   * Cache-aside: return the cached value if present, otherwise run `loader`
-   * (the Prisma query), cache its result and return it.
+   * Cache-aside: returns the cached value if present, otherwise runs
+   * `loader` (the Prisma query), caches its result and returns it.
    *
-   * - `null`/`undefined` results are NOT cached, so "class not found" is
+   * - `null` and `undefined` results are not cached, so "class not found" is
    *   never remembered.
-   * - Values go through JSON, so Date and Decimal come back as strings. Only
-   *   use this for reads whose consumer tolerates that (transformClass does:
-   *   it wraps schedule in new Date() and Number()s the prices).
-   * - Logs HIT/MISS with timings so before/after numbers are visible.
+   * - Values pass through JSON, so Date and Decimal come back as strings. Use
+   *   this only for reads whose consumer tolerates that (transformClass
+   *   wraps `schedule` in new Date() and converts prices with Number()).
+   * - Logs HIT and MISS with timings.
    */
   async wrap<T>(
     key: string,
@@ -92,7 +93,7 @@ export class CacheService implements OnModuleDestroy {
       const raw = await this.client.get(key);
       return raw === null ? null : (JSON.parse(raw) as T);
     } catch {
-      return null; // miss; the error listener already logged connection issues
+      return null; // Miss. The error listener has already logged any connection issue.
     }
   }
 
@@ -101,7 +102,7 @@ export class CacheService implements OnModuleDestroy {
     try {
       await this.client.set(key, JSON.stringify(value), 'EX', ttlSeconds);
     } catch {
-      /* best effort */
+      /* Best effort. */
     }
   }
 
@@ -110,7 +111,7 @@ export class CacheService implements OnModuleDestroy {
     try {
       await this.client.unlink(...keys);
     } catch {
-      /* best effort */
+      /* Best effort. */
     }
   }
 
@@ -124,14 +125,14 @@ export class CacheService implements OnModuleDestroy {
       if (keys.length > 0) await this.client.unlink(...keys);
       this.logger.debug(`INVALIDATE ${prefix}* (${keys.length} keys)`);
     } catch {
-      /* best effort */
+      /* Best effort. */
     }
   }
 
   /**
-   * For the health endpoint. 'disabled' = no REDIS_URL (not a failure);
-   * 'down' if Redis does not answer (commandTimeout is 500ms and the
-   * offline queue is off, so this fails fast instead of hanging).
+   * For the health endpoint. Reports 'disabled' when REDIS_URL is unset (not
+   * a failure) and 'down' when Redis does not answer. The offline queue is
+   * off and commandTimeout is 500ms, so this fails fast instead of hanging.
    */
   async ping(): Promise<'up' | 'down' | 'disabled'> {
     if (!this.client) return 'disabled';
@@ -143,9 +144,9 @@ export class CacheService implements OnModuleDestroy {
   }
 
   /**
-   * Call AFTER a write has committed (after the $transaction promise
+   * Call after a write has committed (after the $transaction promise
    * resolves), never before: invalidating first would let a concurrent read
-   * re-cache the not-yet-committed old data.
+   * re-cache the old, not-yet-committed data.
    */
   invalidateClasses(): Promise<void> {
     return this.delByPrefix(CLASSES_PREFIX);

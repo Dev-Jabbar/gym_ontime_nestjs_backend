@@ -7,8 +7,7 @@ import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 
-// Mounted at /api/admins (matches Express's app.use("/api/admins", ...)).
-// Both routes admin-only, matching Express's protect(["admin"]) on both.
+// Mounted at /api/admins. Both routes are admin only.
 @ApiTags('Admin profile')
 @Controller('admins')
 @ApiCookieAuth()

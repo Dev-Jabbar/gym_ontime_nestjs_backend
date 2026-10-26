@@ -30,17 +30,17 @@ const minutes = (envName: string, fallback: number) => {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 };
 
-// Every 15 minutes, same cadence as the Express cron.
+// Payment sweep: every 15 minutes by default.
 export const sweepIntervalMs = () =>
   minutes('MAINTENANCE_INTERVAL_MINUTES', 15) * 60 * 1000;
 
-// Every hour, same cadence as the Express subscriptionExpiry cron. A
-// subscription lapsing up to an hour late is not a meaningful problem.
+// Subscription expiry: every hour by default. A subscription lapsing up to an
+// hour late is not a meaningful problem.
 export const subscriptionExpiryIntervalMs = () =>
   minutes('SUBSCRIPTION_EXPIRY_INTERVAL_MINUTES', 60) * 60 * 1000;
 
-// Every 15 minutes, same cadence as the Express classReminder cron. The
-// window below is much larger than the interval, so no class is missed.
+// Class reminders: every 15 minutes by default. The window below is much
+// larger than the interval, so no class is missed.
 export const classReminderIntervalMs = () =>
   minutes('CLASS_REMINDER_INTERVAL_MINUTES', 15) * 60 * 1000;
 
@@ -48,9 +48,9 @@ export const classReminderIntervalMs = () =>
 export const reminderWindowMinutes = () =>
   minutes('CLASS_REMINDER_WINDOW_MINUTES', 60);
 
-// A pending payment must be this old before the sweep re-checks it
-// (gives the normal checkout + redirect + verify flow time to finish).
+// A pending payment must be this old before the sweep re-checks it, which
+// gives the normal checkout, redirect and verify flow time to finish.
 export const staleAfterMinutes = () => minutes('PAYMENT_STALE_MINUTES', 30);
 
-// Anything Paystack still can't confirm after this long is forced to failed.
+// Anything Paystack still cannot confirm after this long is forced to failed.
 export const HARD_EXPIRY_HOURS = 24;

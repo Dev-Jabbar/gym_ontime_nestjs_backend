@@ -1,10 +1,10 @@
-// Pure helpers for the class-reminder job (no Nest, no DB), so the date
-// maths is easy to read and test.
+// Pure helpers for the class-reminder job (no Nest, no database), so the date
+// arithmetic is easy to read and test.
 //
-// All "which day / what hour" decisions are made in Africa/Lagos, the app's
-// timezone. Lagos is UTC+1 all year (no daylight saving), so a fixed offset
-// is exact. Doing this explicitly (instead of the server's local clock, as
-// the Express job did) keeps reminders correct on a UTC host.
+// Every "which day / what hour" decision is made in Africa/Lagos, the app's
+// time zone. Lagos is UTC+1 all year (no daylight saving), so a fixed offset
+// is exact. Doing this explicitly, rather than using the server's local
+// clock, keeps reminders correct on a UTC host.
 
 const LAGOS_OFFSET_MS = 60 * 60 * 1000;
 
@@ -22,13 +22,11 @@ const DAY_NAMES = [
 const toLagos = (date: Date) => new Date(date.getTime() + LAGOS_OFFSET_MS);
 
 /**
- * When this class's session for TODAY (Lagos) starts, or null if it has no
+ * When this class's session for today (Lagos) starts, or null if it has no
  * session today. A recurring class's `schedule` is only its first-ever
- * occurrence, so only its time of day is used for later sessions.
- *
- * Differences from the Express job (deliberate): the weekday and time of day
- * are computed in Lagos time, and a recurring class that has not reached its
- * first occurrence yet is never reminded.
+ * occurrence, so only its time of day is used for later sessions. A
+ * recurring class that has not reached its first occurrence yet has no
+ * session.
  */
 export function getTodaysSessionStart(
   schedule: Date,
@@ -46,7 +44,7 @@ export function getTodaysSessionStart(
 
   const runsToday =
     recurrence === 'daily' ||
-    recurrence === 'monthly' || // Express treats this as every day (kept)
+    recurrence === 'monthly' || // Treated as every day (not offered in the UI).
     (recurrence === 'weekly' && recurrenceDays.includes(todayName));
   if (!runsToday) return null;
 

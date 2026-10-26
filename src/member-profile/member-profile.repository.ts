@@ -11,7 +11,7 @@ export class MemberProfileRepository {
     private readonly cache: CacheService,
   ) {}
 
-  // Includes inactive (soft-deleted) profiles — used to decide between
+  // Includes inactive (soft-deleted) profiles. Used to decide between
   // reactivating and creating.
   findByUserId(userId: string) {
     return this.prisma.memberProfile.findUnique({ where: { userId } });
@@ -51,13 +51,13 @@ export class MemberProfileRepository {
   }
 
   /**
-   * Soft delete: removes the member's confirmed class enrollments and
-   * marks the profile inactive, atomically (a crash between the two would
-   * leave a "ghost" member counted against class capacity). Returns false
-   * if there was no active profile.
+   * Soft delete: removes the member's confirmed class enrollments and marks
+   * the profile inactive, atomically (a crash between the two would leave a
+   * "ghost" member counted against class capacity). Returns false if there
+   * was no active profile.
    *
-   * Matches Express: only ClassMember rows are removed, NOT PendingSeat
-   * holds — a known gap in the original app, kept for parity.
+   * Only ClassMember rows are removed, not PendingSeat holds. Holds expire on
+   * their own (a known gap, listed under Known limitations in the README).
    */
   async deactivateWithEnrollmentCleanup(userId: string): Promise<boolean> {
     const done = await this.prisma.$transaction(async (tx) => {

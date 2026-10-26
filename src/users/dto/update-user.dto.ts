@@ -1,9 +1,7 @@
 import { IsEmail, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
 
-// Equivalent of updateUserSchema (Zod). All fields optional since this is
-// a partial update — only the fields the caller actually sends get
-// validated/applied, same as the `...(data.name && {...})` spread pattern
-// in the Express service.
+// Request body for a partial user update: every field is optional, and only
+// the fields the caller sends are validated and applied.
 export class UpdateUserDto {
   @IsOptional()
   @IsString()

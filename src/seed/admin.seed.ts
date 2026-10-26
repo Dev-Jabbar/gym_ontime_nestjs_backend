@@ -3,21 +3,21 @@ import * as bcrypt from 'bcrypt';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 
-// Prisma port of the Express `src/seed/admin.seed.ts`.
+// Creates (or repairs) the admin account.
 //
-// Standalone script: it does NOT boot Nest. It builds its own PrismaClient
+// A standalone script: it does not boot Nest. It builds its own PrismaClient
 // (Prisma 7 needs the pg driver adapter) and talks to the database directly.
 // This is the one place outside a repository that uses Prisma, because it is
-// a one-off operational tool, not part of the request path.
+// a one-off operational tool rather than part of the request path.
 //
-// Run:  npm run seed:admin
-// Safe to run repeatedly (idempotent).
+// Run: npm run seed:admin. Safe to run repeatedly (idempotent).
 //
-// Config (all optional except ADMIN_PASSWORD in production):
-//   ADMIN_EMAIL     default momohabduljabbar@gmail.com  (same as Express)
-//   ADMIN_NAME      default vintage_jab                 (same as Express)
-//   ADMIN_PASSWORD  default Admin12345 in dev; REQUIRED when NODE_ENV=production
-//   ADMIN_AVATAR    default /jabbar2.jpg                (same as Express)
+// Configuration (all optional except ADMIN_PASSWORD in production):
+//   ADMIN_EMAIL     default momohabduljabbar@gmail.com
+//   ADMIN_NAME      default vintage_jab
+//   ADMIN_PASSWORD  default Admin12345 in development; required when
+//                   NODE_ENV=production
+//   ADMIN_AVATAR    default /jabbar2.jpg
 
 const DEFAULT_PASSWORD = 'Admin12345';
 
@@ -46,7 +46,7 @@ async function main() {
     const existing = await prisma.user.findUnique({ where: { email } });
 
     if (existing) {
-      // Never touch an existing password. Only make sure this account is a
+      // Never touch an existing password. Only make sure the account is a
       // usable admin (role, active) and has an AdminProfile row.
       const needsFix =
         existing.role !== 'admin' || !existing.isActive || existing.deletedAt;
@@ -58,7 +58,7 @@ async function main() {
             data: { role: 'admin', isActive: true, deletedAt: null },
           });
         }
-        // update: {} => keep any avatar the admin has since changed.
+        // An empty update keeps any avatar the admin has since changed.
         await tx.adminProfile.upsert({
           where: { userId: existing.id },
           update: {},
@@ -74,8 +74,7 @@ async function main() {
       return;
     }
 
-    // No pre("save") hook in Prisma, so hash explicitly (same cost as
-    // UsersService: 10 rounds).
+    // Prisma has no pre-save hook, so hash explicitly (10 rounds, as in UsersService).
     const hashed = await bcrypt.hash(password, 10);
 
     await prisma.user.create({
@@ -84,7 +83,7 @@ async function main() {
         email,
         password: hashed,
         role: 'admin',
-        adminProfile: { create: { avatar } }, // user + profile in one write
+        adminProfile: { create: { avatar } }, // User and profile in one write.
       },
     });
 

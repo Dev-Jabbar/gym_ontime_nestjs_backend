@@ -11,20 +11,17 @@ import type { CreateClassDto } from './dto/create-class.dto.js';
 import type { UpdateClassDto } from './dto/update-class.dto.js';
 
 // Business rules for classes: validation, "already happened" checks, error
-// messages, status calculation, response shaping. All database access lives
-// in ClassesRepository — nothing in this file touches Prisma directly.
+// messages, status calculation and response shaping. All database access
+// lives in ClassesRepository; nothing here touches Prisma directly.
 @Injectable()
 export class ClassesService {
   constructor(private readonly classesRepo: ClassesRepository) {}
 
   /**
-   * Reserves a temporary seat hold. The atomic part (row lock + capacity
-   * check) is in ClassesRepository.reserveSeat; this method turns its
-   * result code into a distinguishable HTTP exception per failure reason.
-   *
-   * DELIBERATE DIFFERENCE FROM EXPRESS: Express returns bare `null` for
-   * every failure reason and callers must call getClassEnrollmentStatus to
-   * learn why. Here each reason is a distinct exception.
+   * Reserves a temporary seat hold. The atomic part (row lock plus capacity
+   * check) is in ClassesRepository.reserveSeat; this method maps its result
+   * code to a distinct HTTP exception per failure reason, so callers learn
+   * why a booking failed without a second lookup.
    */
   async reserveSeat(classId: string, memberProfileId: string, ttlMinutes: number) {
     const result = await this.classesRepo.reserveSeat(
@@ -48,9 +45,9 @@ export class ClassesService {
   }
 
   /**
-   * Immediately releases a member's hold (payment failed, checkout
-   * abandoned, Paystack init errored). Unconditional delete — no
-   * transaction needed.
+   * Immediately releases a member's hold (payment failed, checkout abandoned
+   * or Paystack initialisation errored). Unconditional delete, so no
+   * transaction is needed.
    */
   releaseSeat(classId: string, memberProfileId: string) {
     return this.classesRepo.deleteHold(classId, memberProfileId);
@@ -58,26 +55,25 @@ export class ClassesService {
 
   /**
    * Converts a hold into a confirmed seat after payment succeeds. Returns
-   * null (not an exception) when there's no unexpired hold: callers are
-   * payment webhook/verification code that branches on the return value
-   * (flag the payment for manual review), not request handlers.
+   * null, rather than throwing, when there is no unexpired hold: callers are
+   * the payment verification code, which branches on the result (flagging
+   * the payment for manual review) instead of handling an HTTP error.
    */
   confirmSeat(classId: string, memberProfileId: string) {
     return this.classesRepo.confirmHold(classId, memberProfileId);
   }
 
   /**
-   * Sweeps every expired hold. Meant to be called on a schedule (Step 5's
-   * Bull Queue job), not from a request path.
+   * Deletes every expired hold. Called on a schedule by the maintenance
+   * sweep, not from a request path.
    */
   releaseExpiredHolds() {
     return this.classesRepo.deleteExpiredHolds();
   }
 
   /**
-   * Reports why a member can or can't book, without reserving anything.
-   * Status set kept identical to Express, including that an active
-   * (unexpired) hold falls through to 'unknown'.
+   * Reports why a member can or cannot book, without reserving anything. An
+   * active (unexpired) hold falls through to 'unknown'.
    */
   async getClassEnrollmentStatus(
     classId: string,
@@ -103,7 +99,7 @@ export class ClassesService {
     return 'unknown';
   }
 
-  // Used by the class-reminder job (MaintenanceService).
+  // Used by the class-reminder job.
   findClassesForReminders(now: Date) {
     return this.classesRepo.findForReminders(now);
   }
@@ -112,14 +108,11 @@ export class ClassesService {
     return this.classesRepo.markReminderSent(id, at);
   }
 
-  // Lightweight name lookup for notification text; null if class is gone.
+  // Lightweight name lookup for notification text. Null if the class is gone.
   findClassName(id: string) {
     return this.classesRepo.findNameById(id);
   }
 
-  // ------------------------
-  // CREATE CLASS
-  // ------------------------
   async createClass(dto: CreateClassDto) {
     const existing = await this.classesRepo.findByNameAndSchedule(
       dto.name,
@@ -131,9 +124,9 @@ export class ClassesService {
       );
     }
 
-    // dto.trainer is a User id, not a TrainerProfile id — resolved here so
-    // an invalid or non-trainer user id is rejected with a clear error
-    // instead of being saved as a broken reference.
+    // dto.trainer is a User id, not a TrainerProfile id. It is resolved here
+    // so an invalid or non-trainer id is rejected with a clear error instead
+    // of being saved as a broken reference.
     const trainerProfile = await this.resolveTrainerProfileFromUserId(
       dto.trainer,
     );
@@ -157,9 +150,6 @@ export class ClassesService {
     return this.findClassById(created.id);
   }
 
-  // ------------------------
-  // GET ALL CLASSES
-  // ------------------------
   async findAllClasses() {
     const classes = await this.classesRepo.findAllWithRelations();
     return classes.map((c) => this.transformClass(c));
@@ -177,18 +167,15 @@ export class ClassesService {
     return classes.map((c) => this.transformClass(c));
   }
 
-  // ------------------------
-  // GET CLASS BY ID
-  // ------------------------
   async findClassById(id: string) {
     const found = await this.classesRepo.findByIdWithRelations(id);
     if (!found) throw new NotFoundException('Class not found');
     return this.transformClass(found);
   }
 
-  // Public — used for the "spots remaining" UI.
+  // Public. Powers the "spots remaining" UI.
   async getClassMemberCount(id: string) {
-    const found = await this.findClassById(id); // already transformed
+    const found = await this.findClassById(id);
     return {
       classId: found.id,
       className: found.name,
@@ -199,12 +186,9 @@ export class ClassesService {
     };
   }
 
-  // ------------------------
-  // UPDATE CLASS
-  // ------------------------
   async updateClass(id: string, dto: UpdateClassDto) {
-    // Defends against a body that never reached the DTO (wrong
-    // Content-Type, unparseable JSON): a clean 400 beats a raw 500.
+    // Guards against a body that never reached the DTO (wrong Content-Type
+    // or unparseable JSON): a clean 400 is better than a raw 500.
     if (!dto || Object.keys(dto).length === 0) {
       throw new BadRequestException('At least one field must be provided');
     }
@@ -212,8 +196,8 @@ export class ClassesService {
     const found = await this.classesRepo.findById(id);
     if (!found) throw new NotFoundException('Class not found');
 
-    // A recurring class's series doesn't end when its anchor date passes;
-    // this check only applies to one-off classes.
+    // A recurring class's series does not end when its anchor date passes,
+    // so this check applies to one-off classes only.
     if (found.recurrence === 'none' && found.schedule < new Date()) {
       throw new BadRequestException('Cannot update a class that already happened');
     }
@@ -250,16 +234,13 @@ export class ClassesService {
       ...(dto.capacity !== undefined && { capacity: dto.capacity }),
       ...(dto.image !== undefined && { image: dto.image }),
       ...(resolvedTrainerId && { trainerId: resolvedTrainerId }),
-      // NOTE: dto.members (bulk-replace enrolled members) is NOT ported —
-      // it needs its own diff-and-sync transaction (see migration plan).
+      // Bulk replacement of enrolled members (`members`) is not supported
+      // here; use the add-member and remove-member routes.
     });
 
     return this.findClassById(id);
   }
 
-  // ------------------------
-  // DELETE CLASS
-  // ------------------------
   async deleteClass(id: string) {
     const found = await this.classesRepo.findByIdWithMemberCount(id);
     if (!found) throw new NotFoundException('Class not found');
@@ -275,10 +256,8 @@ export class ClassesService {
     return { message: 'Class deleted successfully' };
   }
 
-  // ------------------------
-  // ADD MEMBER TO CLASS (admin-driven enrollment, distinct from the
-  // member-initiated reserveSeat/confirmSeat checkout flow)
-  // ------------------------
+  // Admin-driven enrollment, distinct from the member-initiated
+  // reserveSeat/confirmSeat checkout flow.
   async addMemberToClass(classId: string, userId: string) {
     const found = await this.classesRepo.findByIdWithMemberCount(classId);
     if (!found) throw new NotFoundException('Class not found');
@@ -304,9 +283,6 @@ export class ClassesService {
     return { message: 'Member added to class successfully' };
   }
 
-  // ------------------------
-  // REMOVE MEMBER FROM CLASS
-  // ------------------------
   async removeMemberFromClass(classId: string, userId: string) {
     const found = await this.classesRepo.findById(classId);
     if (!found) throw new NotFoundException('Class not found');
@@ -325,10 +301,10 @@ export class ClassesService {
     return { message: 'Member removed from class successfully' };
   }
 
-  // Used by the subscription-expiry job (no request context). Unlike
-  // removeMemberFromClass it never throws: returns true if the member was
-  // enrolled and has been removed, false if they were not enrolled. Safe
-  // to call repeatedly.
+  // Used by the subscription-expiry job, which has no request context.
+  // Unlike removeMemberFromClass it never throws: it returns true if the
+  // member was enrolled and has been removed, false otherwise. Safe to call
+  // repeatedly.
   async removeMemberByProfileId(
     classId: string,
     memberProfileId: string,
@@ -342,9 +318,6 @@ export class ClassesService {
     return true;
   }
 
-  // ------------------------
-  // ASSIGN / CHANGE TRAINER
-  // ------------------------
   async assignTrainerToClass(classId: string, userId: string) {
     const found = await this.classesRepo.findById(classId);
     if (!found) throw new NotFoundException('Class not found');
@@ -365,10 +338,8 @@ export class ClassesService {
     return this.findClassById(classId);
   }
 
-  // ------------------------
-  // GET CLASS MEMBERS (trainers/admins — full member details, no payment
-  // info). Trainers may only view classes they teach; admins are exempt.
-  // ------------------------
+  // Members of a class, with full details but no payment info. Trainers may
+  // only view classes they teach; admins may view any.
   async getClassMembers(
     classId: string,
     requestingUserId: string,
@@ -389,8 +360,8 @@ export class ClassesService {
 
     const memberships = await this.classesRepo.findMembershipsWithProfiles(classId);
 
-    // Mirrors Express's filter on role === "member" — defensive against a
-    // MemberProfile whose User has since changed role (e.g. to trainer).
+    // Defensive: skip a MemberProfile whose User has since changed role
+    // (for example to trainer).
     const membersOnly = memberships
       .filter((m) => m.memberProfile.user.role === 'member')
       .map((m) => ({
@@ -416,10 +387,8 @@ export class ClassesService {
     };
   }
 
-  // ------------------------
-  // Shared lookups — resolve a User id to its Trainer/Member profile,
+  // Shared lookups: resolve a User id to its trainer or member profile,
   // validating the role along the way.
-  // ------------------------
   private async resolveTrainerProfileFromUserId(userId: string) {
     const user = await this.classesRepo.findUserById(userId);
     if (!user) throw new NotFoundException('Trainer user not found');
@@ -448,11 +417,8 @@ export class ClassesService {
     return memberProfile;
   }
 
-  // ------------------------
-  // STATUS FOR RECURRING CLASSES — direct port of Express's
-  // getRecurringStatus, same logic, same reasoning in the original
-  // comments preserved below.
-  // ------------------------
+  // Computes the status of a recurring class from today's date. Uses the
+  // server's local time zone.
   private getRecurringStatus(
     scheduleAnchor: Date,
     durationMinutes: number,
@@ -460,7 +426,7 @@ export class ClassesService {
     recurrenceDays: string[],
     now: Date,
   ): 'upcoming' | 'ongoing' {
-    // The series hasn't had its first occurrence yet at all.
+    // The series has not reached its first occurrence yet.
     if (now < scheduleAnchor) return 'upcoming';
 
     const dayNames = [
@@ -474,11 +440,9 @@ export class ClassesService {
     ];
     const todayName = dayNames[now.getDay()];
 
-    // Daily classes run every day; weekly classes only run on their
-    // selected recurrenceDays. ("monthly" recurrence exists on the model
-    // but isn't currently offered in the create/edit UI — treated like
-    // daily as a safe fallback since it's not actually reachable today,
-    // same as Express.)
+    // Daily classes run every day; weekly classes run only on their selected
+    // recurrenceDays. `monthly` exists on the model but is not offered in the
+    // create/edit UI, so it is treated like daily as a safe fallback.
     const isValidDayToday =
       recurrence === 'daily' ||
       recurrence === 'monthly' ||
@@ -503,14 +467,9 @@ export class ClassesService {
     return 'upcoming';
   }
 
-  // ------------------------
-  // TRANSFORM CLASS FOR FRONTEND — direct port of Express's
-  // transformClass. `duration` deliberately stays a formatted string
-  // ("60 min") to match the existing frontend contract exactly, even
-  // though formatting inside a service method is a slightly unusual
-  // place for it — flagging that as inherited, not re-litigating a
-  // frontend-facing contract decision that predates this migration.
-  // ------------------------
+  // Shapes a class for the frontend. `duration` is intentionally a formatted
+  // string ("60 min"), because that is what the existing frontend contract
+  // expects.
   private transformClass(cls: any) {
     const now = new Date();
     const scheduleDate = new Date(cls.schedule);
