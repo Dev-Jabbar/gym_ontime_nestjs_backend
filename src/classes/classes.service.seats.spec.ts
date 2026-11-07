@@ -78,6 +78,7 @@ describe('ClassesService.getClassEnrollmentStatus', () => {
     mostRecentHold: null,
     capacity: 10,
     memberCount: 2,
+    otherActiveHolds: 0,
     ...over,
   });
 
@@ -119,6 +120,38 @@ describe('ClassesService.getClassEnrollmentStatus', () => {
     );
     await expect(svc.getClassEnrollmentStatus('c1', 'mp1')).resolves.toBe(
       'class-full',
+    );
+  });
+
+  it('other members\' unexpired holds count toward capacity (class-full)', async () => {
+    const { svc, repo } = build();
+    // 8 confirmed + 2 other holds = 10 of 10 seats occupied.
+    repo.getEnrollmentSnapshot.mockResolvedValue(
+      snap({ memberCount: 8, otherActiveHolds: 2 }),
+    );
+    await expect(svc.getClassEnrollmentStatus('c1', 'mp1')).resolves.toBe(
+      'class-full',
+    );
+  });
+
+  it('other members\' holds that still leave a seat free are not class-full', async () => {
+    const { svc, repo } = build();
+    // 8 confirmed + 1 other hold = 9 of 10.
+    repo.getEnrollmentSnapshot.mockResolvedValue(
+      snap({ memberCount: 8, otherActiveHolds: 1 }),
+    );
+    await expect(svc.getClassEnrollmentStatus('c1', 'mp1')).resolves.toBe(
+      'unknown',
+    );
+  });
+
+  it('holds never make an unlimited-capacity class full', async () => {
+    const { svc, repo } = build();
+    repo.getEnrollmentSnapshot.mockResolvedValue(
+      snap({ capacity: null, memberCount: 50, otherActiveHolds: 50 }),
+    );
+    await expect(svc.getClassEnrollmentStatus('c1', 'mp1')).resolves.toBe(
+      'unknown',
     );
   });
 

@@ -145,10 +145,22 @@ export class ClassesRepository {
       where: { classId, memberProfileId },
       orderBy: { expiresAt: 'desc' },
     });
+    // Seats other members are currently holding (unexpired). They count
+    // toward "full" because reserveSeat refuses new holds once confirmed
+    // members plus unexpired holds reach capacity. The caller's own holds are
+    // excluded, matching the Express backend.
+    const otherActiveHolds = await this.prisma.pendingSeat.count({
+      where: {
+        classId,
+        memberProfileId: { not: memberProfileId },
+        expiresAt: { gt: new Date() },
+      },
+    });
 
     return {
       capacity: classRow.capacity,
       memberCount: classRow._count.members,
+      otherActiveHolds,
       isMember: membership != null,
       mostRecentHold,
     };

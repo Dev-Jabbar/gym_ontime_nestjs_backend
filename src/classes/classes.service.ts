@@ -72,8 +72,10 @@ export class ClassesService {
   }
 
   /**
-   * Reports why a member can or cannot book, without reserving anything. An
-   * active (unexpired) hold falls through to 'unknown'.
+   * Reports why a member can or cannot book, without reserving anything.
+   * Capacity counts confirmed members plus every OTHER member's unexpired
+   * hold (the caller's own holds are not counted), the same rule as the
+   * Express backend. A member with no problem found gets 'unknown'.
    */
   async getClassEnrollmentStatus(
     classId: string,
@@ -93,7 +95,10 @@ export class ClassesService {
     const hasActiveHold = hadHold && mostRecentHold.expiresAt > new Date();
     if (hadHold && !hasActiveHold) return 'hold-expired';
 
-    if (snapshot.capacity != null && snapshot.memberCount >= snapshot.capacity) {
+    if (
+      snapshot.capacity != null &&
+      snapshot.memberCount + snapshot.otherActiveHolds >= snapshot.capacity
+    ) {
       return 'class-full';
     }
     return 'unknown';
