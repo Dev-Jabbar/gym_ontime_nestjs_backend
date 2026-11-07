@@ -2,6 +2,12 @@
 
 All notable changes to the backend are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The project does not publish version tags yet, so entries are grouped by date, newest first.
 
+## 2026-11-07
+
+### Changed
+- The "why can't this member book?" check (`getClassEnrollmentStatus`) now counts other members' unexpired seat holds toward capacity, like the booking step and the Express backend. A charged member whose hold lapsed while other holds filled the class is now flagged `needsReview` (member notified, admins alerted) instead of failing with an unexpected-error response. The member's own hold is never counted against them.
+- Unit tests: 102 to 105 (three new cases for holds and capacity).
+
 ## 2026-10-24
 
 ### Added

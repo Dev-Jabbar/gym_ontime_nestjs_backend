@@ -1,6 +1,6 @@
 # Testing and CI
 
-**Unit tests (102, no database needed).** `npm test` runs Vitest with small hand-written fakes: the payment service (verification, webhook signature checks, subscriptions, the needs-review path and the admin alert), seat-hold rules, notifications, the three background jobs (payment sweep, subscription expiry, class reminders), health, cookies, env validation, CORS, class timing and privacy rules. None need a database, Redis, Paystack or Firebase.
+**Unit tests (105, no database needed).** `npm test` runs Vitest with small hand-written fakes: the payment service (verification, webhook signature checks, subscriptions, the needs-review path and the admin alert), seat-hold rules, notifications, the three background jobs (payment sweep, subscription expiry, class reminders), health, cookies, env validation, CORS, class timing and privacy rules. None need a database, Redis, Paystack or Firebase.
 
 **Real-Postgres tests (13).** `src/classes/classes.repository.integration.spec.ts` runs against an actual Postgres, because the seat claim relies on `SELECT ... FOR UPDATE`, which a fake database cannot prove. It fires many bookings at the same moment and counts the winners:
 

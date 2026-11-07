@@ -122,6 +122,7 @@ sequenceDiagram
 
 - A one-off class that has already started cannot be booked (`400`). Recurring classes stay bookable.
 - If Paystack reports the charge didn't succeed, the payment is marked `failed` and the seat hold is released.
+- "No seat available" means the member's own hold has lapsed and either the class is full or the remaining seats are taken: capacity counts confirmed members plus every OTHER member's unexpired hold (the member's own hold is never counted against them). This is the same rule the Express backend uses.
 - If the member was charged but the seat is no longer available, the payment is flagged `needsReview`, the member is notified, and every active admin gets a "Payment Needs Review" alert (in-app and push) naming the member, the class and the Paystack reference, so someone can refund or re-seat them.
 - The background sweep re-verifies payments that stayed `pending`, so a closed browser tab doesn't lose a booking.
 - The webhook checks the `x-paystack-signature` header (HMAC-SHA512 over the raw body, constant-time comparison) and returns `401` on a missing or wrong signature.

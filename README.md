@@ -106,7 +106,7 @@ Controllers handle HTTP only, services hold the business rules, and repositories
 | Security   | `helmet`, `@nestjs/throttler`                                                         |
 | Payments   | Paystack (HTTP via `axios`)                                                           |
 | Uploads    | Cloudinary (signed uploads)                                                           |
-| Tests      | Vitest (102 unit tests + 13 tests against a real Postgres)                            |
+| Tests      | Vitest (105 unit tests + 13 tests against a real Postgres)                            |
 | CI         | GitHub Actions                                                                        |
 | Containers | Docker, Docker Compose                                                                |
 | Lint       | oxlint                                                                                |
